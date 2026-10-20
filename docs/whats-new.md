@@ -14,6 +14,11 @@
   selected). Click it to open the Map view there; **Open in Browser** (formerly Show on Map) still opens
   OpenStreetMap's site.
 
+### Model downloads time out on a name that doesn't resolve
+- Model downloads (AI denoise, faces, SAM) give up on a server name that doesn't resolve within the connect timeout,
+  and Cancel stops a download that is still looking the name up (issue #1532). The lookup used to block with no time
+  limit, and each of a server's addresses then got the whole connect timeout of its own.
+
 ### Lightroom radial masks on the right side
 - Radial masks brought over from Lightroom Classic (catalog import, XMP sidecars, edits inside DNGs and presets) now
   apply their effect inside the circle, as Lightroom does, instead of outside it (issue #1815). A mask inverted in
