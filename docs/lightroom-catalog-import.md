@@ -92,7 +92,7 @@ what the import keeps (paths, image records, develop settings text, decoded XMP,
 collections), not the size of the tables, so there is no per-table size or row cap any more.
 What is bounded, and why:
 
-- **Files**: database files up to 16 GiB and 16,777,216 pages; the WAL up to 1 GiB (it is read
+- **Files**: database files up to 16 GiB and 16,777,216 pages; the WAL up to 4 GiB (it is read
   into memory to validate its checksums).
 - **Records**: one record's payload up to 64 MiB, its overflow chain up to 1,048,576 pages with
   no repeated page; XMP packets up to 16 MiB decoded.
