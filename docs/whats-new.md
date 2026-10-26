@@ -324,8 +324,9 @@
   open one, rest the pointer on it to see the photo.
 - Drag to pan; the mouse wheel or a pinch zooms where the pointer is; Fit to Photos frames every photo with a location.
   The count of photos without GPS is shown bottom left.
-- The map uses OpenStreetMap's tiles (credited on the map) or a tile server you choose, only fetches what is on screen,
-  and can be switched off (`map.tileSource {offline: true}`); see [Map](map.md) for what is sent where.
+- The map uses OpenStreetMap's tiles (credited on the map) or a tile server you choose, only fetches the visible tiles
+  and at most one ring around them, and can be switched off (`map.tileSource {offline: true}`); see [Map](map.md) for
+  what is sent where.
 - The Info panel shows a small map of the photo's place under its location fields (the active photo's, with several
   selected). Click it to open the Map view there; **Open in Browser** (formerly Show on Map) still opens
   OpenStreetMap's site.
