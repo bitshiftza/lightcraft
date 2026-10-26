@@ -496,6 +496,14 @@ pub fn handle(app: &mut LightcraftApp, ctx: &egui::Context) {
     fire.retain(|f| {
         if MAP_ONLY.contains(&f.as_str()) { in_map } else { !(in_map && fired_keys.iter().any(|(id, k)| *id == f.as_str() && map_keys.contains(k))) }
     });
+    // `+` (keypad, Shift+=) sizes the grid thumbnails like `=`; in the Map view it zooms like `=`
+    if in_map {
+        for (id, _) in aliased.iter_mut() {
+            if *id == "view.thumbSizeUp" {
+                *id = "map.zoomIn";
+            }
+        }
+    }
     use crate::panels::compare;
     // rating/flag/label keys: in Compare/Survey they act on the active photo only; Shift+key or
     // Auto Advance then moves on (next candidate in Compare, next photo elsewhere)

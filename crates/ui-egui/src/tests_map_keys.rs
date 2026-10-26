@@ -73,7 +73,10 @@ fn map_keys_run_their_commands_in_the_map_view() {
     key(&mut h, "Minus", false);
     key(&mut h, "Minus", false);
     assert_eq!(state(&mut h)["zoom"].as_f64().unwrap(), (z + 1.0).floor() - 2.0);
-    assert_eq!(h.app.ui.thumb_size, thumbs, "= / − in the Map view don't size the grid thumbnails");
+    // + (the keypad's, or Shift+= reported as Plus) zooms in like =
+    key(&mut h, "Plus", false);
+    assert_eq!(state(&mut h)["zoom"].as_f64().unwrap(), (z + 1.0).floor() - 1.0);
+    assert_eq!(h.app.ui.thumb_size, thumbs, "= / − / + in the Map view don't size the grid thumbnails");
 
     // the keys they share stayed the map's: no Remove panel, no Show Original, no mask overlay change
     assert_eq!((h.app.ui.right, h.app.ui.before_after, h.app.ui.mask_overlay), before);
