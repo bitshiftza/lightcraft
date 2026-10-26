@@ -1544,7 +1544,8 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context, blocked: bool) {
     if !raw_blocked && ctx.input(|i| i.key_pressed(egui::Key::Escape)) && !crate::widgets::escape_taken(ctx) {
         close = true;
     }
-    if !raw_blocked && from_disk {
+    // (Esc in the same frame closes the dialog: nothing is deleted then)
+    if !raw_blocked && from_disk && !close {
         delete_from_disk(app, ctx, &mut dlg, &mut close);
     }
     if !raw_blocked && confirm {

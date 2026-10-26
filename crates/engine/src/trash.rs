@@ -390,6 +390,7 @@ fn recycle(file: &Path) -> Result<PathBuf, String> {
 mod tests {
     use super::*;
 
+    #[cfg_attr(not(all(unix, not(target_os = "macos"))), allow(dead_code))]
     fn dir(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("lc-trash-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
@@ -398,6 +399,8 @@ mod tests {
     }
 
     #[test]
+    // needs a working trash: Delete from Disk is off on Windows and macOS (`available`)
+    #[cfg(all(unix, not(target_os = "macos")))]
     fn a_file_moves_into_the_folder_trash_with_its_restore_record() {
         let d = dir("move");
         let (photos, bin) = (d.join("my photos"), d.join("bin"));
@@ -424,6 +427,8 @@ mod tests {
     }
 
     #[test]
+    // needs a working trash: Delete from Disk is off on Windows and macOS (`available`)
+    #[cfg(all(unix, not(target_os = "macos")))]
     fn an_unusable_trash_leaves_the_file_where_it_was() {
         let d = dir("fail");
         let f = d.join("keep.jpg");

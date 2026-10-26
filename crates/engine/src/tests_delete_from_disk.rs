@@ -1,6 +1,8 @@
 //! Delete from Disk (`photo.deleteFromDisk`, issue #1706): the files go to the Trash (here a temp
 //! folder, never the real one) with their sidecars, the photos leave the library, and a file that
 //! can't be moved stays, with its photo.
+// The tests that move files to a trash run where Delete from Disk is on (`trash::available`).
+#![cfg_attr(not(all(unix, not(target_os = "macos"))), allow(dead_code, unused_imports))]
 
 use std::path::{Path, PathBuf};
 
@@ -42,6 +44,7 @@ fn imported(dir: &Path, files: &[&str]) -> (Session, Vec<PhotoId>, PathBuf) {
 }
 
 #[test]
+#[cfg(all(unix, not(target_os = "macos")))]
 fn delete_from_disk_moves_the_file_and_its_sidecars_to_the_trash() {
     let dir = temp_dir("move");
     std::fs::write(dir.join("a.xmp"), "<x/>").unwrap();
@@ -74,6 +77,7 @@ fn delete_from_disk_moves_the_file_and_its_sidecars_to_the_trash() {
 }
 
 #[test]
+#[cfg(all(unix, not(target_os = "macos")))]
 fn a_stem_sidecar_another_photo_shares_stays() {
     let dir = temp_dir("stem");
     std::fs::write(dir.join("a.xmp"), "<x/>").unwrap();
@@ -94,6 +98,7 @@ fn a_stem_sidecar_another_photo_shares_stays() {
 }
 
 #[test]
+#[cfg(all(unix, not(target_os = "macos")))]
 fn a_file_that_cant_go_to_the_trash_stays_with_its_photo() {
     let dir = temp_dir("fail");
     let (mut s, ids, bin) = imported(&dir, &["a.png"]);
@@ -110,6 +115,7 @@ fn a_file_that_cant_go_to_the_trash_stays_with_its_photo() {
 }
 
 #[test]
+#[cfg(all(unix, not(target_os = "macos")))]
 fn a_file_already_gone_is_only_taken_out_of_the_library() {
     let dir = temp_dir("gone");
     let (mut s, ids, bin) = imported(&dir, &["a.png"]);

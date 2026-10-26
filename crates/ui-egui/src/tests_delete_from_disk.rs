@@ -3,6 +3,8 @@
 //! them to Recently Deleted; Cancel does nothing. When the files can't be moved, the dialog says
 //! why and offers to remove the photos from the library instead. Photo ▸ Delete Rejected Photos…
 //! asks the same about the rejected photos on screen.
+// The tests that move files to a trash run where Delete from Disk is on (`trash::available`).
+#![cfg_attr(not(all(unix, not(target_os = "macos"))), allow(dead_code, unused_imports))]
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -64,6 +66,7 @@ fn click(h: &mut Headless, id: &str) {
 }
 
 #[test]
+#[cfg(all(unix, not(target_os = "macos")))]
 fn the_delete_dialog_deletes_from_disk_removes_or_cancels() {
     let (dir, bin) = (temp_dir("ok"), temp_dir("ok-bin"));
     let (mut h, ids) = app(&dir, &bin);
@@ -102,6 +105,7 @@ fn the_delete_dialog_deletes_from_disk_removes_or_cancels() {
 }
 
 #[test]
+#[cfg(all(unix, not(target_os = "macos")))]
 fn when_the_trash_fails_the_dialog_says_why_and_offers_to_remove_instead() {
     let dir = temp_dir("fail");
     // the "Trash" is a file: nothing can go there
@@ -130,6 +134,7 @@ fn when_the_trash_fails_the_dialog_says_why_and_offers_to_remove_instead() {
 }
 
 #[test]
+#[cfg(all(unix, not(target_os = "macos")))]
 fn delete_rejected_photos_asks_about_the_rejected_ones() {
     let (dir, bin) = (temp_dir("rejected"), temp_dir("rejected-bin"));
     let (mut h, ids) = app(&dir, &bin);

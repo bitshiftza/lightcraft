@@ -336,9 +336,11 @@
 
 ### Delete from Disk
 - Delete now asks as Lightroom does: **Delete from Disk**, **Cancel** or **Remove** (issue #1706). Delete from Disk
-  moves the files, with their XMP sidecars, to the Trash (the Recycle Bin on Windows) and takes the photos out of the
-  library; nothing is deleted outright, so you can restore the files from the Trash. Remove works as Delete did before:
-  the photos go to Recently Deleted and the files stay on disk.
+  moves the files, with their XMP sidecars, to the Trash and takes the photos out of the library; nothing is deleted
+  outright, so you can restore the files from the Trash. Remove works as Delete did before: the photos go to Recently
+  Deleted and the files stay on disk.
+- Delete from Disk is on Linux and the BSDs for now. On Windows and macOS it stays off until it has been tested there,
+  and the web version doesn't have it: there the dialog offers Cancel and Remove.
 - If a file can't go to the Trash (a disk without one, no permission), it stays where it is and the dialog says why,
   offering to remove the photo from the library instead.
 - Photo ▸ Delete Rejected Photos… (⌘⌫ / Ctrl+Backspace) asks the same about the rejected photos on screen; in an
