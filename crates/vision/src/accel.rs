@@ -196,10 +196,11 @@ impl Accel {
         if self.failed().is_some() || self.runner.usable().is_err() {
             return None;
         }
-        let r = input().map_err(|e| e.to_string()).and_then(|input| {
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.runner.run(&input, n, pick)))
-                .unwrap_or_else(|_| Err("the runner stopped unexpectedly".into()))
-        });
+        // making the input is CPU work (patches, rows of the token table): when it fails the runner is not to blame,
+        // and the CPU path, which makes the same input, says what is wrong
+        let Ok(input) = input() else { return None };
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.runner.run(&input, n, pick)))
+            .unwrap_or_else(|_| Err("the runner stopped unexpectedly".into()));
         let r = r.and_then(|v| {
             if v.len() != n.saturating_mul(out) {
                 Err(format!("the runner gave {} numbers for {n} × {out}", v.len()))
@@ -291,6 +292,17 @@ pub(crate) mod tests {
         let off = Accel::new(Box::new(Fake { fail: false, usable: false }));
         assert_eq!(off.run(|| Ok(vec![1.0]), 1, 2, &[]), None);
         assert!(off.failed().is_none() && off.device().is_none() && disabled().is_none());
+    }
+
+    #[test]
+    fn an_input_that_cannot_be_made_is_not_a_gpu_failure() {
+        let _alone = ALONE.lock().unwrap_or_else(|e| e.into_inner());
+        reset_disabled();
+        let ok = Accel::new(Box::new(Fake { fail: false, usable: true }));
+        // (a token id outside the table, say: the CPU path reports it)
+        assert_eq!(ok.run(|| Err(crate::Error::Input("no such token".into())), 1, 2, &[]), None);
+        assert!(ok.failed().is_none() && disabled().is_none(), "the runner stays in use");
+        assert_eq!(ok.run(|| Ok(vec![3.0]), 1, 2, &[]), Some(vec![3.0; 2]));
     }
 
     #[test]

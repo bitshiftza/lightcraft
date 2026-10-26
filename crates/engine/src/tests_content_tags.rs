@@ -433,6 +433,8 @@ fn a_smart_collection_can_ask_what_photos_show_and_matches_nothing_without_an_in
             &json!({"name": "Green", "rules": {"ruleSet": {"rules": [{"field": "contents", "op": "isTagged", "value": "colour|green"}]}}}),
         )
         .unwrap();
+    // the reply counts the tag rule's photos already (no view asked for them first)
+    assert_eq!(tagged["count"].as_u64(), Some(green as u64), "{tagged}");
     let showing = s
         .execute(
             "album.createSmart",

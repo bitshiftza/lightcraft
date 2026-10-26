@@ -505,3 +505,29 @@ fn the_real_model_passes_its_self_test() {
     assert_eq!(r["ok"], true);
     assert!(r["msPerImage"].as_f64().unwrap() > 0.0);
 }
+
+#[test]
+fn a_damaged_second_folder_of_an_installed_model_leaves_the_installed_files_alone() {
+    let d = temp("reinstall");
+    let mut s = session(&d);
+    let m = tiny("mine");
+    let first = d.join("first");
+    model_folder(&first, &m);
+    s.execute("content.models.install", &json!({"path": first.to_string_lossy(), "acknowledged": true})).unwrap();
+    // the same model again, its last file damaged: the files before it pass their checks
+    let second = d.join("second");
+    model_folder(&second, &m);
+    let mut bytes = std::fs::read(second.join("config.json")).unwrap();
+    bytes[0] ^= 1;
+    std::fs::write(second.join("config.json"), bytes).unwrap();
+    let e = s.execute("content.models.install", &json!({"path": second.to_string_lossy(), "acknowledged": true})).unwrap_err().to_string();
+    assert!(e.contains("config.json"), "{e}");
+    let home = content_dir(&s).join("mine");
+    for (n, b) in files() {
+        assert_eq!(std::fs::read(home.join(n)).ok().as_deref(), Some(b.as_slice()), "{n} is as installed");
+        assert!(!home.join(format!("{n}.part")).exists(), "no {n}.part left behind");
+    }
+    let l = list(&mut s);
+    assert_eq!((find(&l, "mine")["state"].as_str(), l["model"].as_str()), (Some("installed"), Some("mine")));
+    let _ = std::fs::remove_dir_all(&d);
+}

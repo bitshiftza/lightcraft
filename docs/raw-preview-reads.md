@@ -171,16 +171,16 @@ use the largest JPEG, so their geometry and colour do not depend on the size lev
 - `crates/engine/src/files.rs`: the content scan's loader reads a fixture's small preview and not its big
   one, with the whole-file path's pixels; asked for more, it reads the big one; a file the planner cannot
   describe is read whole.
-- `crates/raw/tests/sparse_corpus.rs`: `preview_plan_covering` at 512 and 2048 px must hand on the whole
+- `crates/raw/tests/it/sparse_corpus.rs`: `preview_plan_covering` at 512 and 2048 px must hand on the whole
   file's choice for every corpus file it answers for. `preview_plan` is asked for **every** corpus file, not only
   the ones whose header plan is `Ready`, and the preview it yields must equal the whole file's with
   the skipped bytes `0` and `0xFF`. The test prints what each format reads.
-- `crates/engine/tests/preview_read.rs` (opt-in, `#[ignore]`): the same measurement on a **real**
+- `crates/engine/tests/it/preview_read.rs` (opt-in, `#[ignore]`): the same measurement on a **real**
   file, typically on a share:
 
   ```sh
   LC_PREVIEW_RAW="/mnt/nas/…/DSCF0001.RAF" \
-    cargo test --release -p lightcraft-engine --test preview_read -- --ignored --nocapture
+    cargo test --release -p lightcraft-engine --test it preview_read:: -- --ignored --nocapture
   ```
 
   No raw fixture is committed (media never is, see `AGENTS.md`).
