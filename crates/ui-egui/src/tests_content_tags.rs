@@ -135,10 +135,11 @@ fn the_contents_picker_lists_the_tags_with_their_counts_and_filters_the_grid() {
     assert!(n > 0 && n < all);
     assert!(has(&h, "dropdown:filter-contentTag"), "the picker is in the filter bar");
     click(&mut h, "dropdown:filter-contentTag");
-    assert!(
-        has(&h, "filterItem:contentTag:colour") && has(&h, "filterItem:contentTag:colour|warm|red")
-            || !counts.iter().any(|(t, _)| t == "colour|warm|red")
-    );
+    // the parent tag is listed; a tag below it too, when some photo has it
+    assert!(has(&h, "filterItem:contentTag:colour"), "the parent tag is listed");
+    if counts.iter().any(|(t, _)| t == "colour|warm|red") {
+        assert!(has(&h, "filterItem:contentTag:colour|warm|red"));
+    }
     click(&mut h, &format!("filterItem:contentTag:{tag}"));
     assert_eq!(h.app.session.filter.content_tag.as_deref(), Some(tag.as_str()));
     assert_eq!(h.app.session.visible_cloned().len(), n, "the grid shows the tag's photos");
@@ -205,5 +206,25 @@ fn settings_search_shows_the_auto_tag_options_and_the_vocabulary() {
     let v = h.app.session.execute("content.vocabulary", &json!({})).unwrap();
     assert_eq!(v["custom"], false);
     assert!(v["count"].as_u64().unwrap() > 1000);
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// The Smart Rules editor's unsaved contents rules are asked about while it is open, and forgotten when it closes.
+#[test]
+fn the_smart_rules_editor_forgets_its_contents_asks_when_it_closes() {
+    let d = temp("rulesasks");
+    let mut h = app(&d);
+    let rules: lightcraft_catalog::RuleSet =
+        serde_json::from_value(json!({"rules": [{"field": "contents", "op": "shows", "value": "green"}]})).unwrap();
+    h.app.ui.dialog = Some(crate::state::Dialog::SmartRules { id: None, name: "Green".into(), rules, parent: None });
+    h.step();
+    h.step();
+    assert!(!h.app.session.content_rules_asked().is_empty(), "asked while the editor is open");
+    let r = h.request("ui.clickWidget", json!({"id": "button:dialogCancel"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    h.step();
+    h.step();
+    assert!(h.app.ui.dialog.is_none());
+    assert!(h.app.session.content_rules_asked().is_empty(), "forgotten once it is closed");
     let _ = std::fs::remove_dir_all(&d);
 }

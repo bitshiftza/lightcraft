@@ -366,3 +366,35 @@ fn the_real_model_finds_the_beach_from_the_search_bar() {
     assert_eq!(kind, lightcraft_scenes::Kind::Beach);
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// A search by contents isn't kept between runs: its text doesn't come back as a search of the photos' text.
+#[test]
+fn a_contents_search_text_is_not_restored_as_a_text_search() {
+    let mut ui = crate::UiState { search: "a dog on a jetty".into(), search_mode: SearchMode::Contents, ..Default::default() };
+    let back = serde_json::from_str::<crate::UiState>(&serde_json::to_string(&ui).unwrap()).unwrap().sanitized();
+    assert_eq!((back.search.as_str(), back.search_mode), ("", SearchMode::Text));
+    // a text search is kept
+    ui.search = "rating:>=3".into();
+    ui.search_mode = SearchMode::Text;
+    let back = serde_json::from_str::<crate::UiState>(&serde_json::to_string(&ui).unwrap()).unwrap().sanitized();
+    assert_eq!((back.search.as_str(), back.search_mode), ("rating:>=3", SearchMode::Text));
+    // an older ui.json without the mode, or with junk in it, reads as Text
+    let mut v = serde_json::to_value(&ui).unwrap();
+    v["searchMode"] = json!(42);
+    assert_eq!(serde_json::from_value::<crate::UiState>(v).unwrap().search_mode, SearchMode::Text);
+}
+
+/// A pause waited for in Contents mode is forgotten once the field searches text: it neither searches nor keeps the
+/// window repainting.
+#[test]
+fn a_pending_contents_search_is_dropped_in_text_mode() {
+    let d = temp("pendingtext");
+    let mut h = app(&d, false, false, 0);
+    h.app.ui.search_mode = SearchMode::Text;
+    h.app.ui.search_due = Some(1e9);
+    h.step();
+    h.step();
+    assert_eq!(h.app.ui.search_due, None);
+    assert_eq!(h.app.session.content_ask(), None);
+    let _ = std::fs::remove_dir_all(&d);
+}

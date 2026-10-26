@@ -92,6 +92,11 @@ pub(crate) fn decode(bytes: &[u8], opts: &DecodeOptions) -> Result<Decoded> {
     finish(F, raw, meta, (w, h), opts)
 }
 
+/// The largest strip or tile [`decode_reduced`] reads (decoded bytes).
+pub(crate) const MAX_REDUCED_CHUNK_BYTES: u64 = 64 << 20;
+/// The most memory [`decode_reduced`]'s sums of the reduced image take.
+pub(crate) const MAX_REDUCED_SUM_BYTES: usize = 1 << 30;
+
 /// A TIFF decoded straight to (about) the size `opts` asks for, from a reader: strip by strip (or tile by tile), each
 /// averaged into blocks of `k` × `k` pixels as it is read, so neither the file nor the full-size image is ever held
 /// (a 2.3 GB layered Photoshop TIFF of 8640 × 5760 × 16 bits becomes a 540 × 360 picture in a few megabytes).
@@ -124,8 +129,12 @@ pub(crate) fn decode_reduced<R: std::io::Read + std::io::Seek>(reader: R, opts: 
 
     let (wu, hu, ku, s) = (w as usize, h as usize, k as usize, n_samples);
     let (ow, oh) = (wu.div_ceil(ku), hu.div_ceil(ku));
-    let mut sum = vec![0f64; ow.checked_mul(oh).and_then(|n| n.checked_mul(s)).ok_or_else(|| err("image too large"))?];
-    let mut count = vec![0u32; ow * oh];
+    // the sums of the reduced image: bounded whatever the sample count says (beyond it, the whole decode, with its
+    // own limits, takes over)
+    let cells = ow.checked_mul(oh).and_then(|n| n.checked_mul(s)).ok_or_else(|| err("image too large"))?;
+    if cells > MAX_REDUCED_SUM_BYTES / std::mem::size_of::<f64>() {
+        return Ok(None);
+    }
     let (cw, ch) = match d.get_chunk_type() {
         tiff::decoder::ChunkType::Strip => {
             let rows = d.get_tag_u32(Tag::RowsPerStrip).unwrap_or(h).clamp(1, h);
@@ -140,6 +149,14 @@ pub(crate) fn decode_reduced<R: std::io::Read + std::io::Seek>(reader: R, opts: 
     if cw == 0 || ch == 0 {
         return Err(err("empty strips or tiles"));
     }
+    // One strip or tile is decoded at a time; one that is most of the image (no RowsPerStrip, or one strip for the
+    // whole image, or huge tiles) would be the full-size decode this path exists to avoid: decode it whole instead.
+    let chunk_bytes = u64::from(cw).saturating_mul(u64::from(ch)).saturating_mul(s as u64).saturating_mul(u64::from(bits.div_ceil(8)));
+    if chunk_bytes > MAX_REDUCED_CHUNK_BYTES {
+        return Ok(None);
+    }
+    let mut sum = vec![0f64; cells];
+    let mut count = vec![0u32; ow * oh];
     let (across, down) = (w.div_ceil(cw) as usize, h.div_ceil(ch) as usize);
     let chunks = across.checked_mul(down).ok_or_else(|| err("too many tiles"))?;
     // the kind of samples, which every chunk must keep
