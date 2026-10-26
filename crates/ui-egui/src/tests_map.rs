@@ -256,6 +256,21 @@ fn tile_textures_are_uploaded_once_not_every_frame() {
     let canvas = h.app.map.rect.unwrap();
     let px = img.pixels[(canvas.top() as usize + 200) * img.size[0] + canvas.left() as usize + 200];
     assert!(px.r() > 140 && px.g() > 150, "{px:?}");
+    // a headless screenshot (its own egui context) paints the window's tile textures too, and
+    // uploads nothing into its context (texture ids are per context)
+    let main = h.view.ctx.clone();
+    let shot = h.app.headless_screenshot(&main, true).expect("a capture");
+    let scale = shot.size[0] as f32 / img.size[0] as f32;
+    let at = |x: f32, y: f32| shot.pixels[(y * scale) as usize * shot.size[0] + (x * scale) as usize];
+    let px = at(canvas.left() + 200.0, canvas.top() + 200.0);
+    // the fake tile's colour, not a missing texture's white
+    let want = img.pixels[(canvas.top() as usize + 200) * img.size[0] + canvas.left() as usize + 200];
+    let close = |a: u8, b: u8| a.abs_diff(b) <= 12;
+    assert!(close(px.r(), want.r()) && close(px.g(), want.g()) && close(px.b(), want.b()), "the capture shows the tiles: {px:?} vs {want:?}");
+    assert!(px.b() < 230, "{px:?}");
+    assert_eq!(h.app.map.uploads, uploads, "the capture uploaded no tiles of its own");
+    frames(&mut h, 3);
+    assert_eq!(h.app.map.uploads, uploads);
     // panning a little reuses what is there and only uploads the newly shown tiles
     run(&mut h, "map.setView", json!({"lon": 4.0}));
     assert!(h.step_until(T, |h| h.app.map.tiles_missing == 0 && idle(h)));

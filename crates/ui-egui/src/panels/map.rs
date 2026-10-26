@@ -92,6 +92,10 @@ pub struct MapView {
     pub tiles_missing: usize,
     /// Time the last clustering took (ms).
     pub cluster_ms: f64,
+    /// The window is being drawn into the headless screenshot's own context: the tile textures
+    /// belong to the window's context, so this pass draws with them (the capture paints them from
+    /// [`cpu_textures`]) and neither uploads nor takes the service's arrivals.
+    pub(crate) shadow_pass: bool,
 }
 
 impl MapView {
@@ -261,7 +265,7 @@ fn map_canvas(app: &mut LightcraftApp, ui: &mut egui::Ui, canvas: Rect) {
     if !offline {
         let svc = app.session.map_tiles();
         svc.show(&vp);
-        let events = svc.poll();
+        let events = if app.map.shadow_pass { Vec::new() } else { svc.poll() };
         let idle = svc.is_idle();
         attribution = svc.source().attribution.clone();
         for e in &events {
@@ -290,6 +294,7 @@ fn map_canvas(app: &mut LightcraftApp, ui: &mut egui::Ui, canvas: Rect) {
             ppp,
         );
         if !offline
+            && !app.map.shadow_pass
             && !app.map.textures.contains_key(&tile.key)
             && let Some(img) = app.session.map_tiles().get(tile.key)
             && let Some(tex) = upload(&ctx, tile.key, &img)
@@ -517,6 +522,26 @@ fn upload(ctx: &egui::Context, key: TileKey, img: &lightcraft_map::TileImage) ->
     }
     let image = egui::ColorImage::from_rgba_unmultiplied([w, h], &img.rgba);
     Some(ctx.load_texture(format!("map-tile-{}-{}-{}", key.z, key.x, key.y), image, egui::TextureOptions::LINEAR))
+}
+
+/// The tile textures as CPU images (by texture id), for a headless screenshot to paint them: the
+/// textures live in the window's context, not the capture's. Tiles no longer in memory are left
+/// out (drawn as missing).
+pub(crate) fn cpu_textures(app: &LightcraftApp) -> HashMap<egui::TextureId, crate::softpaint::CpuTexture> {
+    let Some(svc) = app.session.map.service() else { return HashMap::new() };
+    app.map
+        .textures
+        .iter()
+        .filter_map(|(key, tt)| {
+            let img = svc.get(*key)?;
+            let (w, h) = (img.width as usize, img.height as usize);
+            if w == 0 || h == 0 || w.checked_mul(h)?.checked_mul(4)? != img.rgba.len() {
+                return None;
+            }
+            let image = Arc::new(egui::ColorImage::from_rgba_unmultiplied([w, h], &img.rgba));
+            Some((tt.tex.id(), crate::softpaint::CpuTexture::linear(image)))
+        })
+        .collect()
 }
 
 /// Drop the least recently drawn textures past [`MAX_TEXTURES`] (down to three quarters of it).
