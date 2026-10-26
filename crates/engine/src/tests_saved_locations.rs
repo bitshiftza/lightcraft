@@ -231,6 +231,13 @@ fn hostile_entries_are_left_out_and_the_file_kept_aside() {
     eprintln!("3001 locations counted in {} ms", r["countMs"]);
     assert!(r["countMs"].as_f64().unwrap() < 2000.0, "{}", r["countMs"]);
     drop(s);
+    // the good ones were written back: opening again finds nothing to set aside or warn about
+    let mut s = Session::new().with_fs();
+    s.open_library(&dir, true).unwrap();
+    assert_eq!(listed(&mut s).len(), 3001);
+    assert!(s.take_library_warnings().iter().all(|w| !w.contains("locations.json")));
+    assert_eq!(corrupt_copies(&dir).len(), 1, "no second copy");
+    drop(s);
     let _ = std::fs::remove_dir_all(&dir);
 }
 

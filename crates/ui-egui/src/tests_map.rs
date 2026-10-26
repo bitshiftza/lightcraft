@@ -260,6 +260,21 @@ fn tile_textures_are_uploaded_once_not_every_frame() {
     let canvas = h.app.map.rect.unwrap();
     let px = img.pixels[(canvas.top() as usize + 200) * img.size[0] + canvas.left() as usize + 200];
     assert!(px.r() > 140 && px.g() > 150, "{px:?}");
+    // a headless screenshot (its own egui context) paints the window's tile textures too, and
+    // uploads nothing into its context (texture ids are per context)
+    let main = h.view.ctx.clone();
+    let shot = h.app.headless_screenshot(&main, true).expect("a capture");
+    let scale = shot.size[0] as f32 / img.size[0] as f32;
+    let at = |x: f32, y: f32| shot.pixels[(y * scale) as usize * shot.size[0] + (x * scale) as usize];
+    let px = at(canvas.left() + 200.0, canvas.top() + 200.0);
+    // the fake tile's colour, not a missing texture's white
+    let want = img.pixels[(canvas.top() as usize + 200) * img.size[0] + canvas.left() as usize + 200];
+    let close = |a: u8, b: u8| a.abs_diff(b) <= 12;
+    assert!(close(px.r(), want.r()) && close(px.g(), want.g()) && close(px.b(), want.b()), "the capture shows the tiles: {px:?} vs {want:?}");
+    assert!(px.b() < 230, "{px:?}");
+    assert_eq!(h.app.map.uploads, uploads, "the capture uploaded no tiles of its own");
+    frames(&mut h, 3);
+    assert_eq!(h.app.map.uploads, uploads);
     // panning a little reuses what is there and only uploads the newly shown tiles
     run(&mut h, "map.setView", json!({"lon": 4.0}));
     assert!(h.step_until(T, |h| h.app.map.tiles_missing == 0 && idle(h)));
@@ -526,4 +541,19 @@ fn hostile_positions_narrow_windows_and_a_changing_photo_never_crash_the_mini_ma
         frames(&mut h, 3);
     }
     assert!(widget(&h, "info:miniMap").is_some());
+}
+
+#[test]
+fn the_mini_map_pin_stays_on_a_map_of_any_width() {
+    use crate::panels::map::keep_on_map;
+    use egui::{Rect, pos2};
+    let wide = Rect::from_min_size(pos2(0.0, 0.0), egui::vec2(200.0, 160.0));
+    assert_eq!(keep_on_map(pos2(-50.0, 300.0), wide), pos2(8.0, 152.0));
+    assert_eq!(keep_on_map(pos2(f32::NAN, 10.0), wide), wide.center());
+    // narrower than the 8-point margins on both sides: the centre line, not a panic
+    for w in [1.0, 5.0, 15.9, 16.0] {
+        let narrow = Rect::from_min_size(pos2(10.0, 0.0), egui::vec2(w, 160.0));
+        let p = keep_on_map(pos2(500.0, 80.0), narrow);
+        assert!((narrow.left()..=narrow.right()).contains(&p.x), "{w}: {p:?}");
+    }
 }
