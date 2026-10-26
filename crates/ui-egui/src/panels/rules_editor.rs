@@ -141,7 +141,8 @@ fn area_value(ui: &mut egui::Ui, v: &mut Value) {
     for (i, (name, max)) in [("South", 90.0), ("West", 180.0), ("North", 90.0), ("East", 180.0)].into_iter().enumerate() {
         ui.label(crate::i18n::tr(name));
         if let Some(x) = e.get_mut(i) {
-            changed |= ui.add(egui::DragValue::new(x).range(-max..=max).speed(0.1).max_decimals(6)).changed();
+            // a stored edge out of range is shown as it is, not clamped (and saved) on sight
+            changed |= ui.add(egui::DragValue::new(x).range(-max..=max).clamp_existing_to_range(false).speed(0.1).max_decimals(6)).changed();
         }
     }
     if changed {
@@ -460,5 +461,21 @@ mod tests {
         lightcraft_catalog::rules::set_now(None);
         assert_eq!(default_value("shutterSpeed", "gte"), json!("1/250"));
         assert_eq!(default_value("shutterSpeed", "between"), json!(["1/1000", "1/125"]));
+    }
+
+    /// An area whose stored edge is out of range stays as stored when the editor draws it, so
+    /// the rule check can still mark it (the editor doesn't fix it up unasked).
+    #[test]
+    fn an_out_of_range_area_is_not_rewritten_by_drawing_it() {
+        let ctx = egui::Context::default();
+        let stored = json!({"south": 95.0, "west": -200.0, "north": 10.0, "east": 10.0});
+        let mut v = stored.clone();
+        for _ in 0..3 {
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                egui::CentralPanel::default().show(ui, |ui| area_value(ui, &mut v));
+            });
+            out.textures_delta.clear();
+        }
+        assert_eq!(v, stored);
     }
 }
