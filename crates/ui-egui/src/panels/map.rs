@@ -210,6 +210,10 @@ pub struct MapView {
     in_view_for: Option<(u64, [u64; 4])>,
     /// Time the last count of the photos in view took (ms).
     pub count_ms: f64,
+    /// The window is being drawn into the headless screenshot's own context: the tile textures
+    /// belong to the window's context, so this pass draws with them (the capture paints them from
+    /// [`cpu_textures`]) and neither uploads nor takes the service's arrivals.
+    pub(crate) shadow_pass: bool,
 }
 
 impl MapView {
@@ -777,18 +781,23 @@ pub fn draw_tiles(
         app.map.textures.clear();
         app.map.textures_source = app.session.map.source().id.clone();
     }
+    // a headless screenshot's pass (its own context and pass numbers) draws what the window has
+    // and changes nothing: no tiles asked for, no arrivals taken, no uploads
+    let shadow = app.map.shadow_pass;
     if !offline {
         // the Map view loads a ring of tiles around what it shows (it pans); the mini-map doesn't
         let margin = if surface == Surface::Mini { 0 } else { 1 };
-        if let Some(w) = app.map.wanted.get_mut(surface as usize) {
+        if !shadow && let Some(w) = app.map.wanted.get_mut(surface as usize) {
             *w = (pass, vp.tile_keys(source_max, margin));
         }
         // every map drawn in this pass or the last one: one doesn't cancel the other's tiles
         let keys: Vec<TileKey> = app.map.wanted.iter().filter(|(p, _)| p.saturating_add(1) >= pass).flat_map(|(_, k)| k.iter().copied()).collect();
-        app.map.wanting = true;
+        app.map.wanting |= !shadow;
         let svc = app.session.map_tiles();
-        svc.want(&keys);
-        let events = svc.poll();
+        if !shadow {
+            svc.want(&keys);
+        }
+        let events = if shadow { Vec::new() } else { svc.poll() };
         let idle = svc.is_idle();
         attribution = svc.source().attribution.clone();
         for e in &events {
@@ -820,6 +829,7 @@ pub fn draw_tiles(
             ppp,
         );
         if !offline
+            && !shadow
             && !app.map.textures.contains_key(&tile.key)
             && let Some(img) = app.session.map_tiles().get(tile.key)
             && let Some(tex) = upload(ctx, tile.key, &img)
@@ -828,7 +838,9 @@ pub fn draw_tiles(
             app.map.uploads += 1;
         }
         if let Some(tt) = app.map.textures.get_mut(&tile.key) {
-            tt.used = pass;
+            if !shadow {
+                tt.used = pass;
+            }
             painter.image(tt.tex.id(), rect, uv, Color32::WHITE);
             drawn += 1;
             continue;
@@ -839,7 +851,9 @@ pub fn draw_tiles(
         for d in 1..=4u8.min(tile.key.z) {
             let parent = TileKey { z: tile.key.z - d, x: tile.key.x >> d, y: tile.key.y >> d };
             if let Some(tt) = app.map.textures.get_mut(&parent) {
-                tt.used = pass;
+                if !shadow {
+                    tt.used = pass;
+                }
                 let n = f32::from(1u16 << d);
                 let (ox, oy) = ((tile.key.x & ((1 << d) - 1)) as f32 / n, (tile.key.y & ((1 << d) - 1)) as f32 / n);
                 painter.image(tt.tex.id(), rect, Rect::from_min_size(pos2(ox, oy), vec2(1.0 / n, 1.0 / n)), Color32::WHITE);
@@ -877,6 +891,9 @@ pub fn draw_attribution(ui: &egui::Ui, painter: &egui::Painter, t: &Tokens, canv
 /// At the end of a frame: when no map was drawn in it, stop loading the tiles the last one asked
 /// for (only the maps on screen fetch), and forget the mini-map.
 pub fn end_pass(app: &mut LightcraftApp, ctx: &egui::Context) {
+    if app.map.shadow_pass {
+        return;
+    }
     let pass = ctx.cumulative_pass_nr();
     if app.map.mini.as_ref().is_some_and(|m| m.pass != pass) {
         app.map.mini = None;
@@ -977,16 +994,18 @@ pub fn mini_map(app: &mut LightcraftApp, ui: &mut egui::Ui, photo: PhotoId, pos:
     }
     draw_attribution(ui, &painter, &t, rect, tiles.attribution, 10.0, "info:miniMapAttribution");
     painter.rect_stroke(rect, 0.0, Stroke::new(1.0, t.divider), StrokeKind::Inside);
-    app.map.mini = Some(MiniShown {
-        photo,
-        center: vp.center,
-        zoom,
-        rect,
-        pin,
-        tiles_drawn: tiles.drawn,
-        tiles_missing: tiles.missing,
-        pass: ctx.cumulative_pass_nr(),
-    });
+    if !app.map.shadow_pass {
+        app.map.mini = Some(MiniShown {
+            photo,
+            center: vp.center,
+            zoom,
+            rect,
+            pin,
+            tiles_drawn: tiles.drawn,
+            tiles_missing: tiles.missing,
+            pass: ctx.cumulative_pass_nr(),
+        });
+    }
     if resp.hovered() {
         ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
     }
@@ -1058,6 +1077,26 @@ fn upload(ctx: &egui::Context, key: TileKey, img: &lightcraft_map::TileImage) ->
     }
     let image = egui::ColorImage::from_rgba_unmultiplied([w, h], &img.rgba);
     Some(ctx.load_texture(format!("map-tile-{}-{}-{}", key.z, key.x, key.y), image, egui::TextureOptions::LINEAR))
+}
+
+/// The tile textures as CPU images (by texture id), for a headless screenshot to paint them: the
+/// textures live in the window's context, not the capture's. Tiles no longer in memory are left
+/// out (drawn as missing).
+pub(crate) fn cpu_textures(app: &LightcraftApp) -> HashMap<egui::TextureId, crate::softpaint::CpuTexture> {
+    let Some(svc) = app.session.map.service() else { return HashMap::new() };
+    app.map
+        .textures
+        .iter()
+        .filter_map(|(key, tt)| {
+            let img = svc.get(*key)?;
+            let (w, h) = (img.width as usize, img.height as usize);
+            if w == 0 || h == 0 || w.checked_mul(h)?.checked_mul(4)? != img.rgba.len() {
+                return None;
+            }
+            let image = Arc::new(egui::ColorImage::from_rgba_unmultiplied([w, h], &img.rgba));
+            Some((tt.tex.id(), crate::softpaint::CpuTexture::linear(image)))
+        })
+        .collect()
 }
 
 /// Drop the least recently drawn textures past [`MAX_TEXTURES`] (down to three quarters of it).
