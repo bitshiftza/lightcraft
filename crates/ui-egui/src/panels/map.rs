@@ -199,8 +199,8 @@ fn map_canvas(app: &mut LightcraftApp, ui: &mut egui::Ui, canvas: Rect) {
     if app.map.camera.is_none() || std::mem::take(&mut app.map.fit_pending) {
         app.map.camera = Some(fit_camera(app, w, h));
     }
-    let resp = ui.interact(canvas, egui::Id::new("map-canvas"), Sense::click_and_drag());
-    register(&ctx, "map:canvas", canvas);
+    let resp = ui.interact(canvas, egui::Id::unique("map-canvas"), Sense::click_and_drag());
+    register(ui, "map:canvas", canvas);
     let local = |p: egui::Pos2| Point::new(f64::from(p.x - canvas.min.x), f64::from(p.y - canvas.min.y));
 
     // ---- moving the map
@@ -357,7 +357,7 @@ fn map_canvas(app: &mut LightcraftApp, ui: &mut egui::Ui, canvas: Rect) {
             painter.text(at, Align2::CENTER_CENTER, text, t.semibold(11.0), if sel { Color32::WHITE } else { PIN_TEXT });
         }
         if listed.len() < MAX_LISTED && listed.insert(c.ids.first().copied().unwrap_or(0)) {
-            register(&ctx, format!("map:pin:{}", c.ids.first().copied().unwrap_or(0)), Rect::from_center_size(at, vec2(r * 2.0, r * 2.0)));
+            register(ui, format!("map:pin:{}", c.ids.first().copied().unwrap_or(0)), Rect::from_center_size(at, vec2(r * 2.0, r * 2.0)));
         }
     }
     if hovered.is_some() {
@@ -416,7 +416,7 @@ fn map_canvas(app: &mut LightcraftApp, ui: &mut egui::Ui, canvas: Rect) {
         let r = Rect::from_min_size(pos2(canvas.left() + 8.0, canvas.bottom() - g.size().y - 14.0), g.size() + vec2(12.0, 6.0));
         painter.rect_filled(r, 4.0, Color32::from_black_alpha(150));
         painter.galley(r.min + vec2(6.0, 3.0), g, t.text_label);
-        register(&ctx, "map:withoutGps", r);
+        register(ui, "map:withoutGps", r);
     }
     if !attribution.is_empty() {
         // always visible, never behind a toggle (the tile provider's terms)
@@ -424,7 +424,7 @@ fn map_canvas(app: &mut LightcraftApp, ui: &mut egui::Ui, canvas: Rect) {
         let r = Rect::from_min_size(pos2(canvas.right() - g.size().x - 12.0, canvas.bottom() - g.size().y - 6.0), g.size() + vec2(8.0, 4.0));
         painter.rect_filled(r, 2.0, Color32::from_white_alpha(200));
         painter.galley(r.min + vec2(4.0, 2.0), g, Color32::from_gray(0x20));
-        register(&ctx, "map:attribution", r);
+        register(ui, "map:attribution", r);
     }
     controls(app, ui, canvas);
 }
@@ -477,7 +477,7 @@ fn thumbnail(app: &mut LightcraftApp, ui: &egui::Ui, painter: &egui::Painter, at
     if let Some(c) = caption {
         painter.text(pos2(frame.center().x, img.bottom() + 10.0), Align2::CENTER_CENTER, c, t.font(11.5), t.text_label);
     }
-    register(ui.ctx(), "map:hoverThumb", frame);
+    register(ui, "map:hoverThumb", frame);
 }
 
 /// + / − and Fit to Photos, top right.
@@ -503,7 +503,7 @@ fn controls(app: &mut LightcraftApp, ui: &mut egui::Ui, canvas: Rect) {
         let _ = app.run("map.zoomIn", json!({}));
     }
     let b = ui.put(fit_r, egui::Button::new(egui::RichText::new(fit_label).font(t.font(12.5))).fill(t.chrome.gamma_multiply(0.92)));
-    register(ui.ctx(), "map:fit", b.rect);
+    register(ui, "map:fit", b.rect);
     if b.on_hover_text(crate::i18n::tr("Show every photo with a location")).clicked() {
         let _ = app.run("map.fit", json!({}));
     }
