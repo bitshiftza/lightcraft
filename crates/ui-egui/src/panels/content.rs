@@ -653,7 +653,8 @@ pub fn model_dialog(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, m: &
     };
     ui.add(egui::Label::new(RichText::new(what).color(t.text_label)).wrap());
     ui.label(RichText::new(licence_line(m)).font(t.semibold(12.5)).color(if m["licence"]["commercial"] == true { t.text } else { t.caution }));
-    if m["publisher"].is_string() {
+    // (only the SigLIP 2 models are Google's, under Apache-2.0; the licence line above says what any other is under)
+    if m["publisher"] == "Google" {
         ui.add(
             egui::Label::new(
                 RichText::new(tr("Made by Google and published under the Apache License 2.0, which allows any use, commercial included."))
