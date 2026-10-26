@@ -113,9 +113,12 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
                     }
                 }
             });
+            // the text keeps as much room on the right as the mode button takes on the left, so the field stays centred
+            // on the window (#2365)
+            let inset = mr.right() + 2.0 - sr.left();
             let mut child = ui.new_child(
                 egui::UiBuilder::new()
-                    .max_rect(Rect::from_min_max(pos2(mr.right() + 2.0, sr.top() + 4.0), pos2(sr.right() - 10.0, sr.bottom() - 4.0)))
+                    .max_rect(Rect::from_min_max(pos2(sr.left() + inset, sr.top() + 4.0), pos2(sr.right() - inset, sr.bottom() - 4.0)))
                     .layout(egui::Layout::left_to_right(egui::Align::Center)),
             );
             let empty = app.ui.search.is_empty();
@@ -128,7 +131,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
             let field = crate::text_field::TextField::singleline("field:search", &mut app.ui.search)
                 .label(crate::i18n::tr("Search Photos"))
                 .frame(false)
-                .width(sr.right() - mr.right() - 14.0)
+                .width(sr.width() - 2.0 * inset)
                 .font(t.font(13.5))
                 .text_color(t.text)
                 .show(&mut child);
