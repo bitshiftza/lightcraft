@@ -897,7 +897,9 @@ pub fn draw_tiles(
             painter.rect_stroke(rect, 0.0, Stroke::new(1.0, PLACEHOLDER_LINE), StrokeKind::Inside);
         }
     }
-    evict(&mut app.map);
+    if !shadow {
+        evict(&mut app.map, pass);
+    }
     TilesDrawn { drawn, missing, attribution }
 }
 
@@ -1133,12 +1135,13 @@ pub(crate) fn cpu_textures(app: &LightcraftApp) -> HashMap<egui::TextureId, crat
         .collect()
 }
 
-/// Drop the least recently drawn textures past [`MAX_TEXTURES`] (down to three quarters of it).
-fn evict(m: &mut MapView) {
+/// Drop the least recently drawn textures past [`MAX_TEXTURES`] (down to three quarters of it),
+/// never one drawn in frame `now` (it would only be uploaded again on the next frame).
+fn evict(m: &mut MapView, now: u64) {
     if m.textures.len() <= MAX_TEXTURES {
         return;
     }
-    let mut by_use: Vec<(u64, TileKey)> = m.textures.iter().map(|(k, v)| (v.used, *k)).collect();
+    let mut by_use: Vec<(u64, TileKey)> = m.textures.iter().filter(|(_, v)| v.used != now).map(|(k, v)| (v.used, *k)).collect();
     by_use.sort();
     let drop = m.textures.len() - MAX_TEXTURES * 3 / 4;
     for (_, k) in by_use.into_iter().take(drop) {
@@ -1328,4 +1331,30 @@ fn state_core(app: &mut LightcraftApp) -> Value {
             "tiles": {"drawn": m.tiles_drawn, "missing": m.tiles_missing},
         })),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Eviction keeps every texture drawn in the current frame, however many there are (a big
+    /// window's tiles and their stand-ins), and drops the oldest of the rest.
+    #[test]
+    fn eviction_never_drops_what_this_frame_drew() {
+        let ctx = egui::Context::default();
+        let mut m = MapView::default();
+        let tex = || ctx.load_texture("t", egui::ColorImage::new([1, 1], vec![Color32::WHITE]), egui::TextureOptions::LINEAR);
+        let key = |i: usize| TileKey { z: 12, x: i as u32, y: 0 };
+        for i in 0..MAX_TEXTURES + 20 {
+            m.textures.insert(key(i), TileTex { tex: tex(), used: 7, from: std::sync::Weak::new() });
+        }
+        evict(&mut m, 7);
+        assert_eq!(m.textures.len(), MAX_TEXTURES + 20, "all drawn this frame: none dropped");
+        for i in 0..10 {
+            m.textures.insert(key(10_000 + i), TileTex { tex: tex(), used: 3, from: std::sync::Weak::new() });
+        }
+        evict(&mut m, 7);
+        assert_eq!(m.textures.len(), MAX_TEXTURES + 20, "only the older ones go");
+        assert!(m.textures.values().all(|t| t.used == 7));
+    }
 }
