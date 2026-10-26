@@ -208,7 +208,7 @@ pub fn button(app: &mut LightcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let loaded = app.session.map.track.is_some();
     let fill = if loaded { t.tool_active } else { t.chrome.gamma_multiply(0.92) };
     let b = ui.put(rect, egui::Button::new(egui::RichText::new(crate::i18n::tr("Tracklog")).font(t.font(12.5))).fill(fill).selected(loaded));
-    register(ui.ctx(), "map:tracklog", b.rect);
+    register(ui, "map:tracklog", b.rect);
     let hover = match app.session.map.track.as_ref() {
         Some(tr) => {
             let off = tr.offset_minutes.unwrap_or(0);
@@ -234,7 +234,7 @@ fn report(app: &LightcraftApp) -> Value {
 
 fn item(ui: &mut egui::Ui, id: &str, enabled: bool, text: impl Into<egui::WidgetText>) -> egui::Response {
     let b = ui.add_enabled(enabled, egui::Button::new(text));
-    register(ui.ctx(), format!("map:tracklog:{id}"), b.rect);
+    register(ui, format!("map:tracklog:{id}"), b.rect);
     b
 }
 
@@ -256,13 +256,13 @@ fn menu(app: &mut LightcraftApp, ui: &mut egui::Ui, r: &Value) {
     }
     let dim = |s: String| egui::RichText::new(s).font(t.font(11.5)).color(t.text_label);
     let head = ui.label(egui::RichText::new(r["name"].as_str().unwrap_or("")).font(t.semibold(12.5)).color(t.text));
-    register(ui.ctx(), "map:tracklog:name", head.rect);
+    register(ui, "map:tracklog:name", head.rect);
     // the tracks: all, or one (what Auto-Tag uses and the map highlights)
     let tracks = r["tracks"].as_array().cloned().unwrap_or_default();
     let active = r["active"].as_u64();
     if tracks.len() > 1 {
         let all = ui.add(egui::Button::selectable(active.is_none(), crate::i18n::tr_format!("All Tracks ({n})", n = tracks.len())));
-        register(ui.ctx(), "map:tracklog:track:all", all.rect);
+        register(ui, "map:tracklog:track:all", all.rect);
         if all.clicked() && active.is_some() {
             run(app, ui, "map.trackLog", json!({"active": "all"}));
         }
@@ -275,7 +275,7 @@ fn menu(app: &mut LightcraftApp, ui: &mut egui::Ui, r: &Value) {
         let text = format!("{name} · {} {}", tr["points"], crate::i18n::tr("points"));
         let on = active == Some(i) || (tracks.len() == 1 && active.is_none());
         let b = ui.add(egui::Button::selectable(on, text));
-        register(ui.ctx(), format!("map:tracklog:track:{i}"), b.rect);
+        register(ui, format!("map:tracklog:track:{i}"), b.rect);
         if b.clicked() && active != Some(i) {
             run(app, ui, "map.trackLog", json!({"active": i}));
         }
@@ -298,7 +298,7 @@ fn menu(app: &mut LightcraftApp, ui: &mut egui::Ui, r: &Value) {
         crate::i18n::tr("Duration:"),
         duration(r["duration"].as_f64().unwrap_or(0.0)),
     )));
-    register(ui.ctx(), "map:tracklog:info", info.rect);
+    register(ui, "map:tracklog:info", info.rect);
     let offset_label = match &off {
         Some(o) => crate::i18n::tr_format!("Set Time Zone Offset… (UTC{o})", o = o),
         None => crate::i18n::tr("Set Time Zone Offset…").to_string(),
