@@ -45,7 +45,7 @@ at its top left the Saved Locations list; at its top right the toolbar: **Trackl
 - A click on a pin or cluster selects its photos (the filmstrip shows them selected); ⌘-click or ⇧-click adds them to
   the selection; a double-click opens the first one in Detail. Resting the pointer on a pin shows its photo's
   thumbnail (the first photo's, with the count, for a cluster).
-- **Hide Pins** (H, or the toolbar button, or View ▸ Map ▸ Show Pins) hides the photo pins and clusters, to see the
+- **Hide Pins** (H, or the toolbar button, or View ▸ Map ▸ Pins) hides the photo pins and clusters, to see the
   map, the saved locations and a track log without them. Hidden pins can't be clicked, hovered or dragged; photos can
   still be dropped onto the map. The choice is saved with the window layout (`ui.json`).
 - Photos whose GPS position is invalid (out of range, NaN) are counted as without GPS, never placed. Clusters are
@@ -136,7 +136,7 @@ the map as a circle with its name above it. A location can be **private**.
 
 - **The list** sits over the map's top-left corner: every saved location with the number of photos in view inside it,
   private ones marked "private" and drawn with a dashed purple edge. A click on its header, **O**, or View ▸ Map ▸
-  Saved Locations ▸ Show List folds it to its header. It is on the map rather than in a docked panel because the
+  Saved Locations ▸ Location List folds it to its header. It is on the map rather than in a docked panel because the
   docked panels are shared by every view; the map's canvas can't be closed, so the list is there whenever the map is.
   On a map narrower than about 470 points or lower than 200 it waits until there is room (the circles and the
   commands still work).
@@ -230,8 +230,8 @@ Deleted, and Remove GPS Coordinates is in the Photo menu and on a pin's right-cl
 here; the items are greyed outside the Map view, except Load Tracklog… and Map Tiles…):
 
 - Fit to Photos, Zoom In, Zoom Out
-- Show Pins, Lock Markers, Show Location Filter Bar, Location Filter ▸ Visible on Map / Tagged / Untagged / None
-- Saved Locations ▸ New Location…, Show List
+- Pins, Lock Markers, Location Filter Bar, Location Filter ▸ Visible on Map / Tagged / Untagged / None
+- Saved Locations ▸ New Location…, Location List
 - Tracklog ▸ Load Tracklog…, Auto-Tag Selected Photos, Set Time Zone Offset…, Fit Map to Tracklog, Clear Tracklog
 - Map Tiles… (opens Settings ▸ Map)
 

@@ -490,16 +490,16 @@ fn map_menu(app: &LightcraftApp) -> Vec<MenuNode> {
         entry("map.zoomIn", "Zoom In", Value::Null, in_map),
         entry("map.zoomOut", "Zoom Out", Value::Null, in_map),
         MenuNode::Separator,
-        entry("map.showPins", "Show Pins", Value::Null, in_map),
+        entry("map.showPins", "Pins", Value::Null, in_map),
         entry("map.lockMarkers", "Lock Markers", Value::Null, in_map),
-        entry("map.filterBar", "Show Location Filter Bar", Value::Null, in_map),
+        entry("map.filterBar", "Location Filter Bar", Value::Null, in_map),
         MenuNode::Submenu { label: "Location Filter".into(), children: filter },
         MenuNode::Separator,
         MenuNode::Submenu {
             label: "Saved Locations".into(),
             children: vec![
                 entry("map.location.new", "New Location…", Value::Null, in_map),
-                entry("map.showLocations", "Show List", Value::Null, in_map),
+                entry("map.showLocations", "Location List", Value::Null, in_map),
             ],
         },
         MenuNode::Submenu {

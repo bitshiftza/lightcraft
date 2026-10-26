@@ -97,13 +97,16 @@ fn map_keys_do_nothing_outside_the_map_view() {
     key(&mut h, "O", false);
     assert_ne!(h.app.ui.mask_overlay, overlay, "O is the mask overlay outside the map");
     assert_eq!(state(&mut h)["locationList"], true);
-    key(&mut h, "K", true);
     key(&mut h, "Equals", false);
     key(&mut h, "Minus", false);
     key(&mut h, "Backslash", false);
-    assert_eq!(h.app.ui.map_lock_markers, lock);
     assert!(h.app.ui.map_filter_bar);
     assert_eq!(h.app.map.camera, cam);
+    // ⌘K is Add Keywords, whose field takes the keys typed next
+    key(&mut h, "K", true);
+    assert_eq!(h.app.ui.right, RightPanel::Keywords);
+    assert_eq!(h.app.ui.map_lock_markers, lock);
+    h.view.ctx.memory_mut(|m| m.stop_text_input());
     // and in the grid, where = sizes the thumbnails instead
     run(&mut h, "view.photoGrid", json!({}));
     frames(&mut h, 2);

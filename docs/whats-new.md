@@ -359,7 +359,7 @@
   (also the map's new **Hide Pins** button) so the map, saved locations and tracks show alone. They work in the Map view
   only: elsewhere H, \\, O and ⌘K keep Remove, Show Original (the Filter Bar in the grids), the mask overlay and
   Add Keywords.
-- **View ▸ Map** gathers every map command: Fit to Photos, zoom, Show Pins, Lock Markers, the location filter, Saved
+- **View ▸ Map** gathers every map command: Fit to Photos, zoom, Pins, Lock Markers, the location filter, Saved
   Locations, Tracklog and Map Tiles….
 - **Settings ▸ Map**: choose OpenStreetMap, Offline or your own tile server (URL template, attribution, max zoom; used
   only once you press Apply), see how much the tile cache holds and clear it. A note says what the tile server sees.
