@@ -345,9 +345,16 @@ impl TileService {
         st.wanted = list;
         st.rank = rank;
         // newest view first: what left the view is dropped before it starts
-        let State { disk_q, net_q, rank, .. } = &mut *st;
+        let State { disk_q, net_q, rank, revalidated, .. } = &mut *st;
         disk_q.retain(|k| rank.contains_key(k));
-        net_q.retain(|k| rank.contains_key(k));
+        net_q.retain(|k| {
+            let keep = rank.contains_key(k);
+            if !keep {
+                // its refresh never started: allow it again when the tile is back in view
+                revalidated.remove(k);
+            }
+            keep
+        });
         st.failed.retain(|_, until| *until > now);
         let has_cache = self.shared.cache.is_some();
         let can_fetch = self.shared.transport.is_some();
@@ -583,7 +590,12 @@ fn net_job(sh: &Shared, k: TileKey) {
                         log::warn!("map: {e}");
                     }
                     let mut st = sh.lock();
-                    st.revalidated.remove(&k);
+                    // an answer that is already stale (no-cache, max-age=0) isn't asked for again this session
+                    if meta.expires > now {
+                        st.revalidated.remove(&k);
+                    } else {
+                        st.revalidated.insert(k);
+                    }
                     let image = Arc::new(img);
                     st.remember(k, Arc::clone(&image), meta.expires);
                     st.events.push(TileEvent::Ready { key: k, image, stale: false });
@@ -611,7 +623,9 @@ fn net_job(sh: &Shared, k: TileKey) {
                     if let Some(t) = st.memory.get_mut(&k) {
                         t.expires = meta.expires;
                     }
-                    st.revalidated.remove(&k);
+                    if meta.expires > now {
+                        st.revalidated.remove(&k);
+                    }
                 }
                 None => fail(&mut st, format!("{url}: 304 for a tile that isn't cached"), false),
             }
