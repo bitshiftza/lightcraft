@@ -251,8 +251,8 @@ fn map_canvas(app: &mut LightcraftApp, ui: &mut egui::Ui, canvas: Rect) {
     if app.map.camera.is_none() || std::mem::take(&mut app.map.fit_pending) {
         app.map.camera = Some(fit_camera(app, w, h));
     }
-    let resp = ui.interact(canvas, egui::Id::new("map-canvas"), Sense::click_and_drag());
-    register(&ctx, "map:canvas", canvas);
+    let resp = ui.interact(canvas, egui::Id::unique("map-canvas"), Sense::click_and_drag());
+    register(ui, "map:canvas", canvas);
     let local = |p: egui::Pos2| Point::new(f64::from(p.x - canvas.min.x), f64::from(p.y - canvas.min.y));
 
     // ---- moving the map
@@ -339,7 +339,7 @@ fn map_canvas(app: &mut LightcraftApp, ui: &mut egui::Ui, canvas: Rect) {
             painter.text(at, Align2::CENTER_CENTER, text, t.semibold(11.0), if sel { Color32::WHITE } else { PIN_TEXT });
         }
         if listed.len() < MAX_LISTED && listed.insert(c.ids.first().copied().unwrap_or(0)) {
-            register(&ctx, format!("map:pin:{}", c.ids.first().copied().unwrap_or(0)), Rect::from_center_size(at, vec2(r * 2.0, r * 2.0)));
+            register(ui, format!("map:pin:{}", c.ids.first().copied().unwrap_or(0)), Rect::from_center_size(at, vec2(r * 2.0, r * 2.0)));
         }
     }
     if hovered.is_some() {
@@ -398,9 +398,9 @@ fn map_canvas(app: &mut LightcraftApp, ui: &mut egui::Ui, canvas: Rect) {
         let r = Rect::from_min_size(pos2(canvas.left() + 8.0, canvas.bottom() - g.size().y - 14.0), g.size() + vec2(12.0, 6.0));
         painter.rect_filled(r, 4.0, Color32::from_black_alpha(150));
         painter.galley(r.min + vec2(6.0, 3.0), g, t.text_label);
-        register(&ctx, "map:withoutGps", r);
+        register(ui, "map:withoutGps", r);
     }
-    draw_attribution(&painter, &t, canvas, tiles.attribution, 11.0, "map:attribution");
+    draw_attribution(ui, &painter, &t, canvas, tiles.attribution, 11.0, "map:attribution");
     controls(app, ui, canvas);
 }
 
@@ -507,7 +507,7 @@ pub fn draw_tiles(
 /// Paint the tile source's credit at the bottom right of `canvas`, always visible (the tile
 /// provider's terms: never behind a toggle or off screen; wrapped on a map narrower than it), and
 /// register it as `widget`. Nothing for an empty credit (offline).
-pub fn draw_attribution(painter: &egui::Painter, t: &Tokens, canvas: Rect, text: String, size: f32, widget: &str) {
+pub fn draw_attribution(ui: &egui::Ui, painter: &egui::Painter, t: &Tokens, canvas: Rect, text: String, size: f32, widget: &str) {
     if text.is_empty() {
         return;
     }
@@ -519,7 +519,7 @@ pub fn draw_attribution(painter: &egui::Painter, t: &Tokens, canvas: Rect, text:
     );
     painter.rect_filled(r, 2.0, Color32::from_white_alpha(200));
     painter.galley(r.min + vec2(4.0, 2.0), g, ink);
-    register(painter.ctx(), widget, r);
+    register(ui, widget, r);
 }
 
 /// At the end of a frame: when no map was drawn in it, stop loading the tiles the last one asked
@@ -588,7 +588,7 @@ fn thumbnail(app: &mut LightcraftApp, ui: &egui::Ui, painter: &egui::Painter, at
     if let Some(c) = caption {
         painter.text(pos2(frame.center().x, img.bottom() + 10.0), Align2::CENTER_CENTER, c, t.font(11.5), t.text_label);
     }
-    register(ui.ctx(), "map:hoverThumb", frame);
+    register(ui, "map:hoverThumb", frame);
 }
 
 /// The Info panel's map of the active photo's position `pos`: `width` wide (the panel's fields),
@@ -604,7 +604,7 @@ pub fn mini_map(app: &mut LightcraftApp, ui: &mut egui::Ui, photo: PhotoId, pos:
     if w < 1.0 || !ui.is_rect_visible(rect) {
         return;
     }
-    register(&ctx, "info:miniMap", rect);
+    register(ui, "info:miniMap", rect);
     let zoom = MINI_ZOOM.min(max_zoom(app));
     let vp = Viewport::new(pos, zoom, f64::from(w), f64::from(MINI_HEIGHT));
     let painter = ui.painter_at(rect);
@@ -627,7 +627,7 @@ pub fn mini_map(app: &mut LightcraftApp, ui: &mut egui::Ui, photo: PhotoId, pos:
         painter.rect_filled(r, 4.0, Color32::from_black_alpha(150));
         painter.galley(r.min + vec2(6.0, 3.0), g, t.text_label);
     }
-    draw_attribution(&painter, &t, rect, tiles.attribution, 10.0, "info:miniMapAttribution");
+    draw_attribution(ui, &painter, &t, rect, tiles.attribution, 10.0, "info:miniMapAttribution");
     painter.rect_stroke(rect, 0.0, Stroke::new(1.0, t.divider), StrokeKind::Inside);
     app.map.mini = Some(MiniShown {
         photo,
@@ -674,7 +674,7 @@ fn controls(app: &mut LightcraftApp, ui: &mut egui::Ui, canvas: Rect) {
         let _ = app.run("map.zoomIn", json!({}));
     }
     let b = ui.put(fit_r, egui::Button::new(egui::RichText::new(fit_label).font(t.font(12.5))).fill(t.chrome.gamma_multiply(0.92)));
-    register(ui.ctx(), "map:fit", b.rect);
+    register(ui, "map:fit", b.rect);
     if b.on_hover_text(crate::i18n::tr("Show every photo with a location")).clicked() {
         let _ = app.run("map.fit", json!({}));
     }
