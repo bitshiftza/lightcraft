@@ -251,4 +251,17 @@ mod tests {
         assert!(s.execute("map.tileSource", &json!({"offline": true})).is_err());
         assert_eq!(s.map.source().id, "osm", "an error means nothing changed");
     }
+
+    #[test]
+    fn a_damaged_saved_tile_source_keeps_the_other_preferences() {
+        let lib = tmp("damaged-source");
+        std::fs::create_dir_all(&lib).unwrap();
+        std::fs::write(lib.join("prefs.json"), br#"{"cacheMb": 777, "mapSource": {"urlTemplate": 5, "maxZoom": "high"}}"#).unwrap();
+        let mut s = Session::new().with_fs();
+        s.open_library(&lib, false).unwrap();
+        assert_eq!(s.cache_mb, 777, "the rest of prefs.json is read");
+        assert_eq!(s.map.source().id, "osm", "the damaged source falls back to OpenStreetMap");
+        drop(s);
+        let _ = std::fs::remove_dir_all(&lib);
+    }
 }
