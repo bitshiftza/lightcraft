@@ -19,7 +19,7 @@ use crate::widgets::register;
 const REFRESH_SECS: f64 = 1.0;
 
 fn list_id() -> egui::Id {
-    egui::Id::new("content-model-list")
+    egui::Id::unique("content-model-list")
 }
 
 /// The engine's model list, re-read at most every [`REFRESH_SECS`], and at once after [`forget`] or when a job starts
@@ -102,7 +102,7 @@ pub fn settings_tab(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens) {
     let r = ui
         .add_enabled(on || (runtime && in_use.is_some()), egui::Checkbox::new(&mut on, tr("Index photo contents")))
         .on_disabled_hover_text(tr("Choose a model below (Use) to start."));
-    register(ui.ctx(), "check:settings.contentEnabled", r.rect);
+    register(ui, "check:settings.contentEnabled", r.rect);
     if r.changed() {
         if let Err(e) = app.run("content.enable", json!({"on": on})) {
             app.toast(ui.ctx(), e);
@@ -152,14 +152,14 @@ fn model_row(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, m: &Value, 
                     ui.label(RichText::new(licence_line(m)).font(t.font(11.5)).color(t.text_dim));
                     if let Some(url) = m["licence"]["url"].as_str() {
                         let r = ui.link(RichText::new(tr("Licence")).font(t.font(11.5)));
-                        register(ui.ctx(), format!("content:licence:{id}"), r.rect);
+                        register(ui, format!("content:licence:{id}"), r.rect);
                         if r.clicked() {
                             open_link(app, ui.ctx(), url);
                         }
                     }
                     if let Some(url) = m["source"].as_str() {
                         let r = ui.link(RichText::new(tr("Model page")).font(t.font(11.5)));
-                        register(ui.ctx(), format!("content:page:{id}"), r.rect);
+                        register(ui, format!("content:page:{id}"), r.rect);
                         if r.clicked() {
                             open_link(app, ui.ctx(), url);
                         }
@@ -187,7 +187,7 @@ fn model_row(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, m: &Value, 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let button = |ui: &mut egui::Ui, what: &str, label: &str| {
                     let r = ui.button(tr(label));
-                    register(ui.ctx(), format!("content:{what}:{id}"), r.rect);
+                    register(ui, format!("content:{what}:{id}"), r.rect);
                     r.clicked()
                 };
                 if running && job["kind"] == "download" {
@@ -262,7 +262,7 @@ fn job_line(ui: &mut egui::Ui, t: &Tokens, id: &str, m: &Value) {
                 )
             };
             let bar = ui.add(egui::ProgressBar::new(frac).desired_width(280.0).text(RichText::new(text).font(t.font(11.5))));
-            register(ui.ctx(), format!("content:progress:{id}"), bar.rect);
+            register(ui, format!("content:progress:{id}"), bar.rect);
         }
         (Some("test"), Some("running")) => {
             ui.label(RichText::new(tr("Testing…")).font(t.font(11.5)).color(t.text_dim));
@@ -319,14 +319,14 @@ pub fn model_dialog(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, m: &
     ui.horizontal(|ui| {
         if let Some(url) = m["licence"]["url"].as_str() {
             let r = ui.link(tr("Read the licence"));
-            register(ui.ctx(), "contentModel:licence", r.rect);
+            register(ui, "contentModel:licence", r.rect);
             if r.clicked() {
                 open_link(app, ui.ctx(), url);
             }
         }
         if let Some(url) = m["source"].as_str() {
             let r = ui.link(tr("Open the model's page"));
-            register(ui.ctx(), "contentModel:page", r.rect);
+            register(ui, "contentModel:page", r.rect);
             if r.clicked() {
                 open_link(app, ui.ctx(), url);
             }
