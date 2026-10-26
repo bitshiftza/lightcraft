@@ -563,6 +563,12 @@ impl Session {
         let (locations, dropped) = crate::locations::SavedLocations::load(file, self.map.locations.revision());
         if dropped > 0 {
             settings.set_aside(files.as_mut(), crate::locations::FILE, &format!("{dropped} saved location(s) in it aren't valid and were left out"));
+            // the copy is safe: write the good ones back, so the next open doesn't set it aside again
+            if !settings.blocked.contains(&crate::locations::FILE)
+                && let Err(e) = files.write_atomic(crate::locations::FILE, &locations.to_file())
+            {
+                log::error!("library: {}: {e}", crate::locations::FILE);
+            }
         }
         self.map.locations.replace(locations);
         self.hold_view = prefs.hold_view;
