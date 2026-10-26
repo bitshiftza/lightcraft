@@ -1229,6 +1229,44 @@ fn map_geotag_writes_gps_to_the_sidecar_and_undo_rewrites_it() {
     let _ = std::fs::remove_dir_all(&lib);
 }
 
+/// Photo ids are per library: a photo geotagged in one library doesn't make the same id's photo
+/// in the next library opened own its sidecar's GPS (another app's position there stays).
+#[test]
+fn geotags_of_the_last_library_dont_claim_the_next_ones_sidecar_gps() {
+    let src_a = temp_dir("geotag-a");
+    let src_b = temp_dir("geotag-b");
+    let (lib_a, lib_b) = (temp_dir("geotag-lib-a"), temp_dir("geotag-lib-b"));
+    write_png(&src_a.join("a.png"), 3);
+    write_png(&src_b.join("b.png"), 4);
+    let mut s = Session::new().with_fs();
+    s.open_library(&lib_a, false).unwrap();
+    s.execute("library.import", &json!({"paths": [src_a.to_string_lossy()]})).unwrap();
+    let id_a = only(&s);
+    s.execute("photo.setGps", &json!({"ids": [id_a.0], "lat": 10.0, "lon": 20.0})).unwrap();
+    s.open_library(&lib_b, false).unwrap();
+    s.execute("library.import", &json!({"paths": [src_b.to_string_lossy()]})).unwrap();
+    let id_b = only(&s);
+    assert_eq!(id_a, id_b, "the test needs the same id in both libraries");
+    assert!(s.catalog.photo(id_b).unwrap().meta.gps.is_none());
+    // another app put a position in the new photo's sidecar
+    let foreign = lightcraft_meta::Metadata {
+        gps: Some(lightcraft_meta::Gps { latitude: -33.8568, longitude: 151.2153, altitude: None }),
+        ..Default::default()
+    };
+    let sidecar = src_b.join("b.xmp");
+    std::fs::write(&sidecar, lightcraft_meta::write_xmp(&foreign, None)).unwrap();
+    s.execute("library.xmpPreferences", &json!({"autoWrite": true})).unwrap();
+    s.execute("photo.rate", &json!({"ids": [id_b.0], "rating": 3})).unwrap();
+    let x = std::fs::read_to_string(&sidecar).unwrap();
+    let back = lightcraft_meta::parse_xmp(&x).unwrap();
+    assert_eq!(back.metadata.rating, Some(3), "the sidecar was written");
+    let g = back.metadata.gps.expect("the other app's GPS stays");
+    assert!((g.latitude + 33.8568).abs() < 1e-5, "{g:?}");
+    for d in [src_a, src_b, lib_a, lib_b] {
+        let _ = std::fs::remove_dir_all(d);
+    }
+}
+
 /// DNG export compression: lossless, zip and none all decode; none is the biggest.
 #[test]
 fn dng_export_compression_choices() {
