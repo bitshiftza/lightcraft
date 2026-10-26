@@ -187,6 +187,18 @@ struct ViewFile {
     selection: Selection,
 }
 
+/// `mapSource` as stored, or `None` (OpenStreetMap) when it isn't a tile source, with a log line.
+fn lenient_tile_source<'de, D: serde::Deserializer<'de>>(deserializer: D) -> std::result::Result<Option<lightcraft_map::TileSource>, D::Error> {
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(value.and_then(|value| match serde_json::from_value::<lightcraft_map::TileSource>(value) {
+        Ok(source) => Some(source),
+        Err(e) => {
+            log::warn!("prefs.json mapSource: {e}; using OpenStreetMap");
+            None
+        }
+    }))
+}
+
 impl Library {
     pub fn journal(&self) -> &Journal {
         &self.journal
@@ -243,7 +255,9 @@ struct PrefsFile {
     /// Days after which untouched Local records of unbrowsed folders are forgotten (missing =
     /// the default, 0 = never).
     forget_local_days: Option<u32>,
-    /// The map's tile source (missing = OpenStreetMap; re-checked when read).
+    /// The map's tile source (missing = OpenStreetMap; re-checked when read). A damaged one is
+    /// dropped on its own, never taking the other preferences with it.
+    #[serde(deserialize_with = "lenient_tile_source")]
     map_source: Option<lightcraft_map::TileSource>,
     /// Slideshow playback settings.
     slideshow: crate::slideshow::PlaybackSettings,
@@ -485,6 +499,8 @@ impl Session {
         }
         self.undo.clear();
         self.redo.clear();
+        // photo ids are per library: positions set in the last one say nothing about this one's
+        self.gps_edited.clear();
         self.interaction = None;
         self.pending_log.clear();
         self.selection = Selection::default();
