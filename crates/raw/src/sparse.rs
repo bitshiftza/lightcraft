@@ -286,8 +286,11 @@ fn tiff_plan(bytes: &[u8], loaded: &Ranges, preview: bool, pointed_holes: bool) 
         let chunks: Vec<(u64, u64)> = match ifd.image() {
             // a preview's strips are read when the preview is wanted: only the raw image is skipped
             Ok(info) if preview && !matches!(info.photometric, t::photometric::CFA | t::photometric::LINEAR_RAW) => continue,
-            // (Sony Compressed RAW 2: the header probe decodes the start of every tile; a preview reads none)
-            Ok(info) if !preview && info.compression == 32766 => return HeaderPlan::Whole("an ARW6 header probe reads its tiles"),
+            // (Sony Compressed RAW 2: the header probe decodes the start of every tile; a preview, the full-file one or
+            // the covering one, reads none)
+            Ok(info) if !preview && !pointed_holes && info.compression == 32766 => {
+                return HeaderPlan::Whole("an ARW6 header probe reads its tiles");
+            }
             Ok(info) => info.chunks(len).iter().map(|c| (c.offset, c.len)).collect(),
             // a raw IFD without the tags a TIFF image needs (an older CR2's) still lists its strips
             Err(_) => match (ifd.u64s(t::STRIP_OFFSETS), ifd.u64s(t::STRIP_BYTE_COUNTS)) {
@@ -771,6 +774,9 @@ mod tests {
         let file = arw6_file(&[(0, 0, 64, 48, first), (64, 0, 64, 48, tile)], 128, 48);
         assert!(crate::probe_info(&file).is_ok());
         assert_eq!(run(&file, 16, 0).0, HeaderPlan::Whole("an ARW6 header probe reads its tiles"));
+        // a covering preview read reads no tile: the guard is the header probe's only
+        let (plan, _, _) = run_plan(&file, 0, |b, l| preview_plan_covering(b, l, 16));
+        assert_eq!(plan, HeaderPlan::Whole("no preview its tags point at"), "the covering plan's own answer, not the probe's");
     }
 
     /// An IFD whose `SubIFDs` entries would queue 33 million child pointers (8192 entries of
