@@ -324,8 +324,9 @@
   open one, rest the pointer on it to see the photo.
 - Drag to pan; the mouse wheel or a pinch zooms where the pointer is; Fit to Photos frames every photo with a location.
   The count of photos without GPS is shown bottom left.
-- The map uses OpenStreetMap's tiles (credited on the map) or a tile server you choose, only fetches what is on screen,
-  and can be switched off (`map.tileSource {offline: true}`); see [Map](map.md) for what is sent where.
+- The map uses OpenStreetMap's tiles (credited on the map) or a tile server you choose, only fetches the visible tiles
+  and at most one ring around them, and can be switched off (`map.tileSource {offline: true}`); see [Map](map.md) for
+  what is sent where.
 
 ### Model downloads time out on a name that doesn't resolve
 - Model downloads (AI denoise, faces, SAM) give up on a server name that doesn't resolve within the connect timeout,
