@@ -436,7 +436,14 @@ impl Index {
         for r in &pending {
             self.record(*r, &mut buf);
         }
-        let mut f = std::fs::OpenOptions::new().write(true).open(path)?;
+        let mut f = match std::fs::OpenOptions::new().write(true).open(path) {
+            Ok(f) => f,
+            Err(e) => {
+                // the file went away (deleted by hand or by a sync tool) or can't be opened: the next save writes it afresh
+                self.file_matches = false;
+                return Err(e);
+            }
+        };
         // a torn record (or anything else) after the last whole one is cut off first, so records stay aligned
         if f.metadata()?.len() != self.file_len {
             f.set_len(self.file_len)?;
@@ -565,6 +572,23 @@ mod tests {
         // the size on disk is the header plus one record per photo
         let expected = header_of("m@abc", 4).len() + 3 * record_len(4);
         assert_eq!(std::fs::metadata(&path).unwrap().len() as usize, expected);
+    }
+
+    #[test]
+    fn an_index_file_deleted_while_open_is_written_afresh_by_the_next_save() {
+        let path = temp("deleted");
+        let mut a = Index::open("m@abc", 2, Some(path.clone()));
+        a.insert(1, h(1), &unit(2, 0)).unwrap();
+        a.save().unwrap();
+        std::fs::remove_file(&path).unwrap();
+        a.insert(2, h(2), &unit(2, 1)).unwrap();
+        // the append finds no file: that save fails, the next one writes the whole file
+        assert!(a.save().is_err() && a.has_unsaved());
+        a.save().unwrap();
+        assert!(a.save_error.is_none() && !a.has_unsaved());
+        drop(a);
+        let b = Index::open("m@abc", 2, Some(path.clone()));
+        assert_eq!((b.len(), b.hash(1), b.hash(2)), (2, Some(h(1)), Some(h(2))));
     }
 
     #[test]

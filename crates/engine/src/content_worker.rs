@@ -34,11 +34,12 @@ pub(crate) const MAX_PREVIEW_READS: usize = 4;
 /// the whole file and a full-size decode, so one at a time: a few big files at once were the 2–5 GB peaks of a scan.
 pub(crate) const MAX_RENDERS: usize = 1;
 
-/// A counting gate: at most `max` holders at once (the others wait), and the most there ever were.
+/// A counting gate: at most `max` holders at once (the others wait), the most there ever were, and how often one
+/// had to wait.
 pub(crate) struct Gate {
     max: usize,
-    /// Holders now, and the most at once.
-    state: Mutex<(usize, usize)>,
+    /// Holders now, the most at once, and the times one had to wait.
+    state: Mutex<(usize, usize, usize)>,
     freed: Condvar,
 }
 
@@ -55,12 +56,15 @@ impl Drop for Pass<'_> {
 
 impl Gate {
     pub const fn new(max: usize) -> Gate {
-        Gate { max, state: Mutex::new((0, 0)), freed: Condvar::new() }
+        Gate { max, state: Mutex::new((0, 0, 0)), freed: Condvar::new() }
     }
 
     /// Wait for a place, and hold it until the pass is dropped.
     pub fn enter(&self) -> Pass<'_> {
         let mut st = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        if st.0 >= self.max.max(1) {
+            st.2 += 1;
+        }
         while st.0 >= self.max.max(1) {
             st = self.freed.wait(st).unwrap_or_else(PoisonError::into_inner);
         }
@@ -73,6 +77,12 @@ impl Gate {
     #[cfg(test)]
     pub fn peak(&self) -> usize {
         self.state.lock().unwrap_or_else(PoisonError::into_inner).1
+    }
+
+    /// How often a holder had to wait for a place.
+    #[cfg(test)]
+    pub fn waits(&self) -> usize {
+        self.state.lock().unwrap_or_else(PoisonError::into_inner).2
     }
 }
 
@@ -222,41 +232,81 @@ fn to_rgb(img: &lightcraft_raster::Rgba8) -> Rgb8 {
     Rgb8 { width: img.width, height: img.height, data: img.data.iter().map(|p| [p[0], p[1], p[2]]).collect() }
 }
 
-/// The picture of one photo, or why there is none. At most [`MAX_PREVIEW_READS`] previews and [`MAX_RENDERS`] renders
-/// run at once (`gates`), whatever the size of the pool.
-fn picture(item: Item, gates: &Gates) -> (PhotoId, Hash, Result<Rgb8, Outcome>) {
-    let Item { id, hash, preview, job, path } = item;
-    let run = catch_unwind(AssertUnwindSafe(|| {
-        let preview = preview.and_then(|(p, load)| {
-            let _pass = gates.previews.enter();
-            load(&p, EDGE)
-        });
-        if let Some(img) = preview.filter(|img| img.width.max(img.height) >= MIN_PREVIEW_EDGE) {
-            return Ok(to_rgb(&img));
-        }
-        let Some(job) = job else { return Err("nothing to render it from".to_string()) };
-        let _pass = gates.renders.enter();
-        job().map(|img| to_rgb(&img))
-    }));
-    let r = match run {
-        Ok(Ok(img)) => Ok(img),
-        Ok(Err(why)) => Err(why),
-        Err(_) => Err("reading it stopped unexpectedly".into()),
-    };
-    (
-        id,
-        hash,
-        r.map_err(|why| match path {
-            Some(p) if !Path::new(&p).exists() => Outcome::Offline,
-            _ => Outcome::Failed(why.chars().take(200).collect()),
-        }),
-    )
+/// One photo on its way to a picture: read from its preview, or still to be rendered.
+enum Step {
+    Read(PhotoId, Hash, Result<Rgb8, Outcome>),
+    Render(PhotoId, Hash, Option<Render>, Option<String>),
 }
 
-/// The pictures of a batch, read in parallel (within the gates).
-fn pictures(items: Vec<Item>, gates: &Gates) -> Vec<(PhotoId, Hash, Result<Rgb8, Outcome>)> {
+/// Why a photo has no picture: offline when its original is gone, else what went wrong.
+fn outcome(why: String, path: Option<String>) -> Outcome {
+    match path {
+        Some(p) if !Path::new(&p).exists() => Outcome::Offline,
+        _ => Outcome::Failed(why.chars().take(200).collect()),
+    }
+}
+
+/// A photo's embedded preview, when it is usable; else the photo is to be rendered. At most [`MAX_PREVIEW_READS`] run
+/// at once (`gates`).
+fn read_preview(item: Item, gates: &Gates) -> Step {
+    let Item { id, hash, preview, job, path } = item;
+    let read = preview.and_then(|(p, load)| {
+        let _pass = gates.previews.enter();
+        catch_unwind(AssertUnwindSafe(|| load(&p, EDGE))).ok().flatten()
+    });
+    match read.filter(|img| img.width.max(img.height) >= MIN_PREVIEW_EDGE) {
+        Some(img) => Step::Read(id, hash, Ok(to_rgb(&img))),
+        None => Step::Render(id, hash, job, path),
+    }
+}
+
+/// A photo rendered from its file. At most [`MAX_RENDERS`] run at once (`gates`).
+fn render_picture(id: PhotoId, hash: Hash, job: Option<Render>, path: Option<String>, gates: &Gates) -> (PhotoId, Hash, Result<Rgb8, Outcome>) {
+    let Some(job) = job else { return (id, hash, Err(outcome("nothing to render it from".into(), path))) };
+    let _pass = gates.renders.enter();
+    let r = match catch_unwind(AssertUnwindSafe(job)) {
+        Ok(Ok(img)) => Ok(to_rgb(&img)),
+        Ok(Err(why)) => Err(outcome(why, path)),
+        Err(_) => Err(outcome("reading it stopped unexpectedly".into(), path)),
+    };
+    (id, hash, r)
+}
+
+/// `f` of every item, on at most `lanes` tasks of the current pool, each taking the next item when it is done.
+///
+/// The lanes are what bound how many run at once, not waiting on a gate inside the pool: a render's decode runs nested
+/// work on the same pool, and a thread waiting for it can pick up another photo of the batch; had that photo waited
+/// on a gate the thread itself holds, indexing would hang. With as many lanes as the gate has places, a lane never
+/// waits on it.
+fn in_lanes<T: Send, U: Send>(items: Vec<T>, lanes: usize, f: impl Fn(T) -> U + Sync) -> Vec<U> {
     use rayon::prelude::*;
-    items.into_par_iter().map(|i| picture(i, gates)).collect()
+    let n = items.len();
+    let queue = Mutex::new(items.into_iter());
+    let out = Mutex::new(Vec::with_capacity(n));
+    (0..lanes.clamp(1, n.max(1))).into_par_iter().for_each(|_| {
+        loop {
+            let next = queue.lock().unwrap_or_else(PoisonError::into_inner).next();
+            let Some(item) = next else { break };
+            let r = f(item);
+            out.lock().unwrap_or_else(PoisonError::into_inner).push(r);
+        }
+    });
+    out.into_inner().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// The pictures of a batch, read in parallel (within the gates): the previews first, then the photos without a
+/// usable one rendered.
+fn pictures(items: Vec<Item>, gates: &Gates) -> Vec<(PhotoId, Hash, Result<Rgb8, Outcome>)> {
+    let mut out = Vec::with_capacity(items.len());
+    let mut to_render = Vec::new();
+    for step in in_lanes(items, gates.previews.max, |i| read_preview(i, gates)) {
+        match step {
+            Step::Read(id, hash, r) => out.push((id, hash, r)),
+            Step::Render(id, hash, job, path) => to_render.push((id, hash, job, path)),
+        }
+    }
+    out.extend(in_lanes(to_render, gates.renders.max, |(id, hash, job, path)| render_picture(id, hash, job, path, gates)));
+    out
 }
 
 /// Embed one batch with `model` (already on the pace's pool).
@@ -759,6 +809,8 @@ mod tests {
         assert_eq!(out.len(), 32);
         assert!(out.iter().all(|(_, _, r)| r.as_ref().is_ok_and(|img| img.width == 300)));
         assert_eq!(gates.previews.peak(), MAX_PREVIEW_READS);
+        // the lanes keep to the gate: no reader ever waits on it inside the pool (where waiting could hang the batch)
+        assert_eq!(gates.previews.waits(), 0);
         assert!(most.load(Ordering::SeqCst) <= MAX_PREVIEW_READS);
         assert_eq!(gates.renders.peak(), 0);
         // no usable preview: every photo is rendered, one at a time
@@ -767,8 +819,42 @@ mod tests {
         let out = pool.install(|| pictures(items(12, false, &live, &most), &gates));
         assert!(out.iter().all(|(_, _, r)| r.as_ref().is_ok_and(|img| img.width == 320)));
         assert_eq!(gates.renders.peak(), MAX_RENDERS);
+        assert_eq!(gates.renders.waits(), 0);
         // (a preview read and a render may overlap, never more than the two caps together)
         assert!(most.load(Ordering::SeqCst) <= MAX_PREVIEW_READS + MAX_RENDERS);
+    }
+
+    /// A render whose decode runs nested work on the pool (as a raw decode does) must not hang the batch: a thread
+    /// waiting for that work may pick up another photo of the batch, which must not then wait on the render gate the
+    /// thread itself holds.
+    #[test]
+    fn renders_with_nested_parallel_work_never_hang_the_batch() {
+        use rayon::prelude::*;
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let pool = rayon::ThreadPoolBuilder::new().num_threads(8).build().unwrap();
+            for _ in 0..2 {
+                let gates = Gates { previews: Gate::new(MAX_PREVIEW_READS), renders: Gate::new(MAX_RENDERS) };
+                // a few renders first, then many quick previews: the threads done with theirs take up the nested work
+                let items: Vec<Item> = (0..128u64)
+                    .map(|i| {
+                        let job: Render = Box::new(|| {
+                            (0..256).into_par_iter().for_each(|_| std::thread::sleep(std::time::Duration::from_micros(200)));
+                            Ok(lightcraft_raster::Rgba8::new(320, 240))
+                        });
+                        let load: PreviewLoader = Arc::new(|_: &str, _: usize| Some(lightcraft_raster::Rgba8::new(300, 200)));
+                        let preview = (i >= 8).then(|| ("x.arw".to_string(), load));
+                        Item { id: PhotoId(i), hash: [0; 16], preview, job: Some(job), path: None }
+                    })
+                    .collect();
+                let out = pool.install(|| pictures(items, &gates));
+                let _ = tx.send((out.len(), gates.renders.peak()));
+            }
+        });
+        for _ in 0..2 {
+            let (n, peak) = rx.recv_timeout(std::time::Duration::from_secs(60)).expect("the batch hung");
+            assert_eq!((n, peak), (128, MAX_RENDERS));
+        }
     }
 
     #[test]

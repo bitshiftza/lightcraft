@@ -20,7 +20,7 @@ use crate::widgets::register;
 const REFRESH_SECS: f64 = 1.0;
 
 fn list_id() -> egui::Id {
-    egui::Id::new("content-model-list")
+    egui::Id::unique("content-model-list")
 }
 
 /// The engine's model list, re-read at most every [`REFRESH_SECS`], and at once after [`forget`] or when a job starts
@@ -103,7 +103,7 @@ pub fn settings_tab(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens) {
     let r = ui
         .add_enabled(on || (runtime && in_use.is_some()), egui::Checkbox::new(&mut on, tr("Index photo contents")))
         .on_disabled_hover_text(tr("Choose a model below (Use) to start."));
-    register(ui.ctx(), "check:settings.contentEnabled", r.rect);
+    register(ui, "check:settings.contentEnabled", r.rect);
     if r.changed() {
         if let Err(e) = app.run("content.enable", json!({"on": on})) {
             app.toast(ui.ctx(), e);
@@ -133,7 +133,7 @@ pub fn settings_tab(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens) {
 /// The index's status (`content.status`), re-read at most every [`REFRESH_SECS`] (the call also moves the scan along).
 fn index_status(app: &mut LightcraftApp, ctx: &egui::Context) -> Value {
     let now = ctx.input(|i| i.time);
-    let id = egui::Id::new("content-index-status");
+    let id = egui::Id::unique("content-index-status");
     if let Some((at, v)) = ctx.data(|d| d.get_temp::<(f64, Value)>(id))
         && now - at < REFRESH_SECS
         && now >= at
@@ -146,7 +146,7 @@ fn index_status(app: &mut LightcraftApp, ctx: &egui::Context) -> Value {
 }
 
 fn forget_status(ctx: &egui::Context) {
-    ctx.data_mut(|d| d.remove::<(f64, Value)>(egui::Id::new("content-index-status")));
+    ctx.data_mut(|d| d.remove::<(f64, Value)>(egui::Id::unique("content-index-status")));
 }
 
 /// "about 3 min", "about 2 h 10 min", "less than a minute".
@@ -175,12 +175,12 @@ fn index_section(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, on: boo
             text = format!("{text} · {}", time_left(eta));
         }
         let bar = ui.add(egui::ProgressBar::new(frac).desired_width(320.0).text(RichText::new(text).font(t.font(11.5))));
-        register(ui.ctx(), "content:indexProgress", bar.rect);
+        register(ui, "content:indexProgress", bar.rect);
     } else if on && st["stopped"] == true {
         ui.horizontal(|ui| {
             ui.label(RichText::new(tr_format!("Stopped at {n} of {total} photos.", n = indexed, total = total)).font(t.font(11.5)).color(t.text_dim));
             let r = ui.button(tr("Resume"));
-            register(ui.ctx(), "content:resume", r.rect);
+            register(ui, "content:resume", r.rect);
             if r.clicked() {
                 if let Err(e) = app.run("content.enable", json!({"on": true})) {
                     app.toast(ui.ctx(), e);
@@ -228,7 +228,7 @@ fn index_section(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, on: boo
     hint(ui, t, "Low barely slows the computer down; Fast uses most of it and finishes sooner.");
     ui.horizontal(|ui| {
         let r = ui.button(tr("Clear Index"));
-        register(ui.ctx(), "content:clearIndex", r.rect);
+        register(ui, "content:clearIndex", r.rect);
         if r.clicked() {
             match app.run("content.clearIndex", json!({})) {
                 Ok(_) => app.toast(ui.ctx(), tr("The index was cleared")),
@@ -246,7 +246,7 @@ fn index_section(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, on: boo
 /// [`REFRESH_SECS`].
 fn tags_status(app: &mut LightcraftApp, ctx: &egui::Context) -> (Value, Value) {
     let now = ctx.input(|i| i.time);
-    let id = egui::Id::new("content-tags-status");
+    let id = egui::Id::unique("content-tags-status");
     if let Some((at, v, o)) = ctx.data(|d| d.get_temp::<(f64, Value, Value)>(id))
         && now - at < REFRESH_SECS
         && now >= at
@@ -267,7 +267,7 @@ fn tags_status(app: &mut LightcraftApp, ctx: &egui::Context) -> (Value, Value) {
 }
 
 fn forget_tags(ctx: &egui::Context) {
-    ctx.data_mut(|d| d.remove::<(f64, Value, Value)>(egui::Id::new("content-tags-status")));
+    ctx.data_mut(|d| d.remove::<(f64, Value, Value)>(egui::Id::unique("content-tags-status")));
 }
 
 /// Auto-tags: how far they are, the keyword parent accepted tags go under, the cut-off (advanced) and the vocabulary.
@@ -293,12 +293,12 @@ fn tags_section(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens) {
     };
     if !line.is_empty() {
         let r = ui.label(RichText::new(line).font(t.font(11.5)).color(if voc["state"] == "error" { t.caution } else { t.text_dim }));
-        register(ui.ctx(), "label:contentTagsState", r.rect);
+        register(ui, "label:contentTagsState", r.rect);
     }
     // the keyword parent of accepted tags
     ui.horizontal(|ui| {
         ui.label(RichText::new(tr("Accepted tags go under the keyword")).color(t.text_label));
-        let id = egui::Id::new("content-tag-parent");
+        let id = egui::Id::unique("content-tag-parent");
         let current = opts["parent"].as_str().unwrap_or("Contents").to_string();
         let mut text: String = ui.data(|d| d.get_temp(id)).unwrap_or_else(|| current.clone());
         let r = crate::text_field::TextField::singleline("field:contentTagParent", &mut text).hint(tr("none")).width(140.0).show(ui);
@@ -322,7 +322,7 @@ fn tags_section(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens) {
             let model = opts["modelThreshold"].as_f64().unwrap_or(0.01);
             let mut v = opts["threshold"].as_f64().unwrap_or(model);
             let r = ui.add(egui::Slider::new(&mut v, 0.001..=0.3).logarithmic(true).max_decimals(3));
-            register(ui.ctx(), "slider:contentTagThreshold", r.rect);
+            register(ui, "slider:contentTagThreshold", r.rect);
             if r.drag_stopped() || (r.changed() && !r.dragged()) {
                 if let Err(e) = app.run("content.tagOptions", json!({"threshold": v})) {
                     app.toast(ui.ctx(), e);
@@ -331,7 +331,7 @@ fn tags_section(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens) {
             }
             if opts["custom"] == true {
                 let b = ui.button(tr("Use the model's"));
-                register(ui.ctx(), "button:contentTagThresholdReset", b.rect);
+                register(ui, "button:contentTagThresholdReset", b.rect);
                 if b.clicked() {
                     let _ = app.run("content.tagOptions", json!({"threshold": Value::Null}));
                     forget_tags(ui.ctx());
@@ -342,13 +342,13 @@ fn tags_section(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens) {
     });
     // the vocabulary
     let open = egui::CollapsingHeader::new(tr("Vocabulary")).id_salt("content-tags-vocabulary").show(ui, |ui| vocabulary_editor(app, ui, t, &voc));
-    register(ui.ctx(), "content:vocabulary", open.header_response.rect);
+    register(ui, "content:vocabulary", open.header_response.rect);
 }
 
 /// The vocabulary as text: one tag per line, `path|of|tag = synonym, synonym`.
 fn vocabulary_editor(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, voc: &Value) {
     hint(ui, t, "One tag per line: animal|bird|owl, or animal|dog = dog, puppy (synonyms: one tag). Levels above a tag count its photos too.");
-    let id = egui::Id::new("content-vocab-text");
+    let id = egui::Id::unique("content-vocab-text");
     let mut text: String = match ui.data(|d| d.get_temp(id)) {
         Some(t) => t,
         None => {
@@ -364,7 +364,7 @@ fn vocabulary_editor(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, voc
     ui.data_mut(|d| d.insert_temp(id, text.clone()));
     ui.horizontal(|ui| {
         let save = ui.button(tr("Save Vocabulary"));
-        register(ui.ctx(), "button:contentVocabularySave", save.rect);
+        register(ui, "button:contentVocabularySave", save.rect);
         if save.clicked() {
             match app.run("content.setVocabulary", json!({"text": text})) {
                 Ok(r) => {
@@ -382,7 +382,7 @@ fn vocabulary_editor(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, voc
             forget_tags(ui.ctx());
         }
         let reset = ui.add_enabled(voc["custom"] == true, egui::Button::new(tr("Restore Defaults")));
-        register(ui.ctx(), "button:contentVocabularyReset", reset.rect);
+        register(ui, "button:contentVocabularyReset", reset.rect);
         if reset.clicked() {
             match app.run("content.setVocabulary", json!({"reset": true})) {
                 Ok(_) => app.toast(ui.ctx(), tr("The built-in vocabulary is back")),
@@ -400,8 +400,7 @@ fn vocabulary_editor(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, voc
 /// Called every frame: keeps content indexing going while it is on. The scan's work runs on its own thread; this only
 /// hands it the next photos and takes in what it finished, a few times a second while it runs (nothing new is started
 /// while the user drags, types or scrolls), and about once a second otherwise.
-pub fn pump(app: &mut LightcraftApp, ctx: &egui::Context) {
-    let now = ctx.input(|i| i.time);
+pub fn pump(app: &mut LightcraftApp, ctx: &egui::Context, now: f64) {
     if now < app.caches.content_next_pump {
         return;
     }
@@ -449,14 +448,14 @@ fn model_row(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, m: &Value, 
                     ui.label(RichText::new(licence_line(m)).font(t.font(11.5)).color(t.text_dim));
                     if let Some(url) = m["licence"]["url"].as_str() {
                         let r = ui.link(RichText::new(tr("Licence")).font(t.font(11.5)));
-                        register(ui.ctx(), format!("content:licence:{id}"), r.rect);
+                        register(ui, format!("content:licence:{id}"), r.rect);
                         if r.clicked() {
                             open_link(app, ui.ctx(), url);
                         }
                     }
                     if let Some(url) = m["source"].as_str() {
                         let r = ui.link(RichText::new(tr("Model page")).font(t.font(11.5)));
-                        register(ui.ctx(), format!("content:page:{id}"), r.rect);
+                        register(ui, format!("content:page:{id}"), r.rect);
                         if r.clicked() {
                             open_link(app, ui.ctx(), url);
                         }
@@ -484,7 +483,7 @@ fn model_row(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, m: &Value, 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let button = |ui: &mut egui::Ui, what: &str, label: &str| {
                     let r = ui.button(tr(label));
-                    register(ui.ctx(), format!("content:{what}:{id}"), r.rect);
+                    register(ui, format!("content:{what}:{id}"), r.rect);
                     r.clicked()
                 };
                 if running && job["kind"] == "download" {
@@ -559,7 +558,7 @@ fn job_line(ui: &mut egui::Ui, t: &Tokens, id: &str, m: &Value) {
                 )
             };
             let bar = ui.add(egui::ProgressBar::new(frac).desired_width(280.0).text(RichText::new(text).font(t.font(11.5))));
-            register(ui.ctx(), format!("content:progress:{id}"), bar.rect);
+            register(ui, format!("content:progress:{id}"), bar.rect);
         }
         (Some("test"), Some("running")) => {
             ui.label(RichText::new(tr("Testing…")).font(t.font(11.5)).color(t.text_dim));
@@ -616,14 +615,14 @@ pub fn model_dialog(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, m: &
     ui.horizontal(|ui| {
         if let Some(url) = m["licence"]["url"].as_str() {
             let r = ui.link(tr("Read the licence"));
-            register(ui.ctx(), "contentModel:licence", r.rect);
+            register(ui, "contentModel:licence", r.rect);
             if r.clicked() {
                 open_link(app, ui.ctx(), url);
             }
         }
         if let Some(url) = m["source"].as_str() {
             let r = ui.link(tr("Open the model's page"));
-            register(ui.ctx(), "contentModel:page", r.rect);
+            register(ui, "contentModel:page", r.rect);
             if r.clicked() {
                 open_link(app, ui.ctx(), url);
             }
