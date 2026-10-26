@@ -613,11 +613,7 @@ pub fn mini_map(app: &mut LightcraftApp, ui: &mut egui::Ui, photo: PhotoId, pos:
     // the pin (where the photo is; near the poles the map stops short of it, so keep it on the map)
     let p = vp.to_screen(pos);
     let pin = pos2(rect.min.x + p.x as f32, rect.min.y + p.y as f32);
-    let pin = if pin.x.is_finite() && pin.y.is_finite() {
-        pin.clamp(rect.min + vec2(8.0, 8.0), (rect.max - vec2(8.0, 8.0)).max(rect.min))
-    } else {
-        rect.center()
-    };
+    let pin = keep_on_map(pin, rect);
     painter.circle_filled(pin + vec2(0.0, 1.5), radius(1) + 1.0, Color32::from_black_alpha(90));
     // drawn as the Map view draws the active photo's pin
     painter.circle(pin, radius(1), t.accent, Stroke::new(3.0, Color32::WHITE));
@@ -649,6 +645,17 @@ pub fn mini_map(app: &mut LightcraftApp, ui: &mut egui::Ui, photo: PhotoId, pos:
             app.toast(&ctx, e);
         }
     }
+}
+
+/// `pin` kept 8 points inside `rect` (the centre of a map narrower than that; a non-finite one too).
+pub(crate) fn keep_on_map(pin: egui::Pos2, rect: Rect) -> egui::Pos2 {
+    if !(pin.x.is_finite() && pin.y.is_finite()) {
+        return rect.center();
+    }
+    // an ordered range however small the map (f32::clamp panics on min > max)
+    let lo = (rect.min + vec2(8.0, 8.0)).min(rect.center());
+    let hi = (rect.max - vec2(8.0, 8.0)).max(rect.center());
+    pin.clamp(lo, hi)
 }
 
 /// + / − and Fit to Photos, top right.
