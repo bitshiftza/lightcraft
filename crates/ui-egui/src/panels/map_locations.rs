@@ -699,6 +699,10 @@ fn location_row(
 /// The private location the Info panel's map would show photo `id` in (unless the user asked to
 /// see it), noted for `map.state`.
 pub fn hides_mini_map(app: &mut LightcraftApp, id: PhotoId, gps: Option<(f64, f64)>, pass: u64) -> Option<SavedLocation> {
+    // Show Map holds for one photo while it is shown: another one ends it
+    if app.map.loc.reveal_private.is_some_and(|r| r != id) {
+        app.map.loc.reveal_private = None;
+    }
     if app.map.loc.reveal_private == Some(id) {
         return None;
     }

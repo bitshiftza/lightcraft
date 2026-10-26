@@ -300,6 +300,12 @@ fn the_info_panel_hides_the_map_of_a_photo_in_a_private_location_until_asked() {
     run(&mut h, "library.select", json!({"ids": [ids[4]]}));
     frames(&mut h, 3);
     assert!(state(&mut h)["miniMap"].is_null());
+    // and the first one too, once another photo was shown: Show Map is asked for again
+    run(&mut h, "library.select", json!({"ids": [ids[3]]}));
+    frames(&mut h, 3);
+    let s = state(&mut h);
+    assert!(s["miniMap"].is_null(), "{s}");
+    assert_eq!(s["privateMiniMap"]["photo"], ids[3]);
 }
 
 #[test]
