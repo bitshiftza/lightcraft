@@ -1202,6 +1202,8 @@ pub fn specs() -> Vec<CommandSpec> {
                 let id = s.catalog.alloc_album_id();
                 let album = Album { parent, smart: Some(Box::new(rules)), ..Album::new(id, name) };
                 s.commit("New Smart Album", Op::AddAlbum { album })?;
+                // contents rules read what the index says through the rules context: bring it up to the new rules
+                s.content_rules_refresh();
                 Ok(json!({"id": id.0, "count": s.catalog.album_count(id)}))
             }
         ),
@@ -1276,6 +1278,7 @@ pub fn specs() -> Vec<CommandSpec> {
                     Some(name) => s.commit("Edit Smart Album", Op::Batch { ops: vec![Op::RenameAlbum { id, name: name.to_string() }, set] })?,
                     None => s.commit("Edit Smart Album", set)?,
                 };
+                s.content_rules_refresh();
                 Ok(json!({"count": s.catalog.album_count(id)}))
             }
         ),

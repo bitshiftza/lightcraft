@@ -321,7 +321,7 @@ fn tags_section(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens) {
             ui.label(RichText::new(tr("Tag cut-off")).color(t.text_label));
             let model = opts["modelThreshold"].as_f64().unwrap_or(0.01);
             let mut v = opts["threshold"].as_f64().unwrap_or(model);
-            let r = ui.add(egui::Slider::new(&mut v, 0.001..=0.3).logarithmic(true).max_decimals(3));
+            let r = ui.add(egui::Slider::new(&mut v, 0.001..=0.3).clamping(egui::SliderClamping::Edits).logarithmic(true).max_decimals(3));
             register(ui, "slider:contentTagThreshold", r.rect);
             if r.drag_stopped() || (r.changed() && !r.dragged()) {
                 if let Err(e) = app.run("content.tagOptions", json!({"threshold": v})) {

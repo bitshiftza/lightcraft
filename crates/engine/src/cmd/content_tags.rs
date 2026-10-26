@@ -733,6 +733,11 @@ impl Session {
         self.content.tags.extra = asked.into_iter().take(64).collect();
     }
 
+    /// What [`Self::content_rules_ask`] was last given.
+    pub fn content_rules_asked(&self) -> &[(bool, String)] {
+        &self.content.tags.extra
+    }
+
     /// Whether contents rules and the Contents filter can match anything here: a content model is in use and photos
     /// are indexed (Settings ▸ Search). The smart album editor says so when they can't.
     pub fn content_rules_usable(&mut self) -> bool {

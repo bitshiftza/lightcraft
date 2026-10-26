@@ -1631,13 +1631,28 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context, blocked: bool) {
     }
     // a dialog opened from inside this one (a button in Settings that shows a licence) takes its place
     if app.ui.dialog.as_ref().is_some_and(|now| *now != at_start) {
+        forget_rules_asks(app, &dlg);
         return;
     }
     if !close && !blocked {
         let frame = ctx.cumulative_frame_nr();
         ctx.data_mut(|d| d.insert_temp(egui::Id::unique(BACKDROP_SHOWN), frame));
     }
-    app.ui.dialog = if close { None } else { Some(dlg) };
+    if close {
+        app.ui.dialog = None;
+        forget_rules_asks(app, &dlg);
+    } else {
+        app.ui.dialog = Some(dlg);
+    }
+}
+
+/// The Smart Rules editor gives the session the contents its unsaved rules ask about (so its match count is right);
+/// once it is gone, nothing asks them any more: no text is embedded and no rules context kept for them.
+fn forget_rules_asks(app: &mut LightcraftApp, closed: &Dialog) {
+    if matches!(closed, Dialog::SmartRules { .. }) && !matches!(app.ui.dialog, Some(Dialog::SmartRules { .. })) {
+        app.session.content_rules_ask(Vec::new());
+        app.session.content_rules_refresh();
+    }
 }
 
 /// The last frame a dialog was drawn and stayed open, for [`clicked_backdrop`].

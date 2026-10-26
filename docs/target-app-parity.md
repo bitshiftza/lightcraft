@@ -103,7 +103,7 @@ search embeddings; generative remove runs in Adobe's cloud.
 | Faces / People | YuNet detection, SFace / AuraFace recognition (opt-in downloads), People view | ✅ (MVP, [faces.md](faces.md)) |
 | Assisted culling | focus, bursts | 🟡 (no eyes-open / aesthetics scores) |
 | Auto (tone), adaptive presets | Auto calibrated on Lightroom's Auto results (#628); no adaptive presets | 🟡 |
-| Natural-language search | local SigLIP 2 (opt-in 1.5 GB download, pure Rust on candle): search bar Contents mode and `contents:` words, Relevance sort, Find Similar Contents ([content-search.md](content-search.md)); no auto-tags yet | 🟡 |
+| Natural-language search | local SigLIP 2 (opt-in 1.5 GB download, pure Rust on candle): search bar Contents mode and `contents:` words, Relevance sort, Find Similar Contents, auto-tags (Library Filter ▸ Contents, Keywording suggestions, Smart Collection Contents rule) ([content-search.md](content-search.md)); one model family, no web build | 🟡 |
 
 **Blocked on a model strategy** (maintainer decision): licensable weights or our own training;
 pure-Rust inference is proven (faces, SAM 3, denoise).
