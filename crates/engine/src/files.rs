@@ -1096,15 +1096,22 @@ fn load_big_tiff_reduced(path: &str, len: usize, max_edge: usize) -> Option<Resu
     if len < BIG_TIFF || max_edge > crate::media::SourceLevel::Preview.max_edge() || !matches!(ext.as_deref(), Some("tif" | "tiff")) {
         return None;
     }
-    let mut file = std::fs::File::open(path).ok()?;
-    let mut head = vec![0u8; 64 << 10];
-    let n = file.read(&mut head).ok()?;
-    let head = head.get(..n)?;
+    let file = std::fs::File::open(path).ok()?;
+    // the whole first 64 KiB (one `read` may return less)
+    let mut head = Vec::with_capacity(64 << 10);
+    file.take(64 << 10).read_to_end(&mut head).ok()?;
+    let head = head.as_slice();
     // a raw that happens to be called .tif goes the raw way
     if lightcraft_codecs::sniff(head) != Some(lightcraft_codecs::Format::Tiff) || lightcraft_raw::probe(head).is_some() {
         return None;
     }
     let file = std::fs::File::open(path).ok()?;
+    // Its working memory waits on the work gate like any decode: one strip or tile (the codec reads none larger than
+    // 64 MiB) and the sums of a picture at most twice the box on each side (four samples of 8 bytes, and a count).
+    let edge = max_edge.saturating_mul(2);
+    let weight = edge.saturating_mul(edge).saturating_mul(4 * 8 + 4).saturating_add(64 << 20);
+    let gate = crate::memory::work_gate();
+    let _permit = if crate::memory::is_background() { gate.acquire(weight) } else { gate.acquire_urgent(weight) };
     let d = match lightcraft_codecs::decode_tiff_reduced(std::io::BufReader::new(file), fit_box(max_edge)) {
         Ok(Some(d)) => d,
         // not covered, or something the whole decode may read after all: that path says what is wrong
@@ -1112,7 +1119,10 @@ fn load_big_tiff_reduced(path: &str, len: usize, max_edge: usize) -> Option<Resu
     };
     let img = d.to_working();
     let img = if img.width.max(img.height) > max_edge { fit(&img, max_edge, max_edge, Filter::Mitchell) } else { img };
-    Some(Ok((img.into_oriented(Orientation::from_exif(d.orientation)), SourceInfo::default())))
+    let r = img.into_oriented(Orientation::from_exif(d.orientation));
+    drop(d);
+    crate::memory::release();
+    Some(Ok((r, SourceInfo::default())))
 }
 
 /// Filesystem-backed hooks (native). On the web the host installs bytes-based hooks instead.

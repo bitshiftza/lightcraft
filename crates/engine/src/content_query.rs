@@ -187,6 +187,19 @@ impl Session {
         self.content_refresh();
     }
 
+    /// End the search by contents without ranking anything (another library is opening): its words leave the search
+    /// text, and Relevance gives way to the sort it replaced.
+    pub(crate) fn end_content_query_for_new_library(&mut self) {
+        if self.sort.key == SortKey::Relevance {
+            self.sort = self.content_query.saved_sort.filter(|s| s.key != SortKey::Relevance).unwrap_or_default();
+        }
+        self.content_query = ContentQuery::default();
+        let (asked, rest) = lightcraft_catalog::query::split_contents(&self.filter.text);
+        if asked.is_some() {
+            self.filter.text = rest;
+        }
+    }
+
     /// Bring the ranking up to date with what is asked (cheap when nothing changed). Returns its generation, which
     /// changes whenever the ranking does.
     pub(crate) fn content_refresh(&mut self) -> u64 {

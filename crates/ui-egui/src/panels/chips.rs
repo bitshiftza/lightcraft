@@ -135,6 +135,8 @@ pub fn content_strip(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         child.painter().line_segment([pos2(a.x, b.y), pos2(b.x, a.y)], Stroke::new(1.3, col));
         if resp.clicked() {
             let _ = app.run("content.clearQuery", json!({}));
+            // (a search still waiting for a pause in the typing would bring it back)
+            app.ui.search_due = None;
             if app.ui.search_mode == crate::state::SearchMode::Contents || matches!(v.ask, ContentAsk::Text(_)) {
                 // (the words typed were the question)
                 let (asked, rest) = lightcraft_catalog::query::split_contents(&app.ui.search);

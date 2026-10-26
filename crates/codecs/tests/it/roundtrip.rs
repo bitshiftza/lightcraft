@@ -974,10 +974,51 @@ fn tiff_reduced_while_read_matches_the_whole_decode() {
     // nothing to gain: decode it whole
     assert!(lightcraft_codecs::decode_tiff_reduced(std::io::Cursor::new(&b), DecodeOptions::fit(300, 300)).unwrap().is_none());
     assert!(lightcraft_codecs::decode_tiff_reduced(std::io::Cursor::new(&b), DecodeOptions::default()).unwrap().is_none());
-    // cut short or not a TIFF: an error, never a panic
+    // cut short or not a TIFF: an error, never a panic (nor a picture)
     for cut in [8, 200, b.len() / 2, b.len() - 10] {
         let r = lightcraft_codecs::decode_tiff_reduced(std::io::Cursor::new(&b[..cut]), DecodeOptions::fit(50, 50));
-        assert!(r.is_err() || r.as_ref().is_ok_and(|d| d.is_some()), "{cut}: {:?}", r.map(|d| d.is_some()));
+        assert!(r.is_err(), "{cut}: {:?}", r.map(|d| d.is_some()));
     }
     assert!(lightcraft_codecs::decode_tiff_reduced(std::io::Cursor::new(b"not a tiff at all"), DecodeOptions::fit(50, 50)).is_err());
+}
+
+/// A TIFF stored as one strip (or one huge tile) gains nothing from the reduced read, which would hold the full-size
+/// strip: it is left to the whole decode, before any pixel data is read.
+#[test]
+fn tiff_reduced_leaves_a_single_strip_image_to_the_whole_decode() {
+    // little-endian header and one IFD: 5000 × 5000 RGB, 16 bits, uncompressed, one 150 MB strip that isn't there
+    let (w, h) = (5000u32, 5000u32);
+    let entry = |tag: u16, kind: u16, count: u32, value: u32| {
+        let mut e = Vec::new();
+        e.extend_from_slice(&tag.to_le_bytes());
+        e.extend_from_slice(&kind.to_le_bytes());
+        e.extend_from_slice(&count.to_le_bytes());
+        e.extend_from_slice(&value.to_le_bytes());
+        e
+    };
+    let entries = [
+        entry(256, 4, 1, w),
+        entry(257, 4, 1, h),
+        entry(258, 3, 3, 8 + 2 + 10 * 12 + 4), // BitsPerSample: the three values after the IFD
+        entry(259, 3, 1, 1),
+        entry(262, 3, 1, 2),
+        entry(273, 4, 1, 4096),
+        entry(277, 3, 1, 3),
+        entry(278, 4, 1, h),
+        entry(279, 4, 1, w * h * 6),
+        entry(284, 3, 1, 1),
+    ];
+    let mut b = b"II*\0".to_vec();
+    b.extend_from_slice(&8u32.to_le_bytes());
+    b.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+    for e in &entries {
+        b.extend_from_slice(e);
+    }
+    b.extend_from_slice(&0u32.to_le_bytes());
+    for _ in 0..3 {
+        b.extend_from_slice(&16u16.to_le_bytes());
+    }
+    b.resize(4096 + 1024, 0);
+    let r = lightcraft_codecs::decode_tiff_reduced(std::io::Cursor::new(&b), DecodeOptions::fit(256, 256));
+    assert!(matches!(r, Ok(None)), "{:?}", r.map(|d| d.is_some()));
 }

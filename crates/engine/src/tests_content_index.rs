@@ -784,3 +784,21 @@ fn the_search_model_loads_off_the_session_thread_and_queries_typed_meanwhile_run
     assert_eq!(s.execute("content.prepare", &json!({})).unwrap()["state"], "ready");
     let _ = std::fs::remove_dir_all(&d);
 }
+
+#[test]
+fn opening_another_library_ends_the_search_by_contents_before_its_first_view() {
+    let (d, calls, mut s) = indexed("newlibrary");
+    s.execute("library.sort", &json!({"key": "fileName", "ascending": true})).unwrap();
+    filter(&mut s, json!({"text": "rating:>=0 contents:green"}));
+    assert_eq!(s.sort.key, lightcraft_catalog::SortKey::Relevance);
+    s.open_library(d.join("other"), false).unwrap();
+    assert_eq!(s.content_ask(), None);
+    assert_eq!(s.filter.text, "rating:>=0", "its words leave the search text");
+    assert_eq!(s.sort.key, lightcraft_catalog::SortKey::FileName, "the sort it replaced comes back");
+    assert!(s.content_query.ranked.is_none());
+    // the first library's index lost nothing: back there, every photo is still indexed
+    s.open_library(d.join("lib"), false).unwrap();
+    let st = status(&mut s);
+    assert_eq!((st["indexed"].as_u64(), st["total"].as_u64().is_some_and(|t| t > 0)), (st["total"].as_u64(), true), "{st}");
+    let _ = (calls, std::fs::remove_dir_all(&d));
+}

@@ -147,6 +147,9 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
                 app.ui.search_due = None;
                 let q = app.ui.search.clone();
                 let _ = app.run("library.filter", json!({"contents": q, "wait": false}));
+            } else if !contents_mode {
+                // (a pause that was waited for in Contents mode means nothing in Text mode)
+                app.ui.search_due = None;
             } else if let Some(due) = app.ui.search_due {
                 ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64((due - now).max(0.01)));
             }

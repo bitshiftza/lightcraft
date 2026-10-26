@@ -323,6 +323,15 @@ fn show_inner(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         super::filterbar::show(app, ui);
     }
     app.canvas_rect = Some(ui.max_rect());
+    // a new search by contents starts at its best match (the top), wherever the grid was scrolled (noted before an
+    // empty view returns, so a search that found nothing still counts as the last one asked)
+    let ask = app.session.content_ask().map(|a| format!("{a:?}"));
+    let new_ask = ui.ctx().data_mut(|d| {
+        let key = egui::Id::unique("grid-content-ask");
+        let was: Option<Option<String>> = d.get_temp(key);
+        d.insert_temp(key, ask.clone());
+        ask.is_some() && was.is_some_and(|w| w != ask)
+    });
     if ids.is_empty() {
         if let Some(v) = &content {
             use lightcraft_engine::content_query::ContentState;
@@ -397,14 +406,6 @@ fn show_inner(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     let active = app.session.selection.active;
     // bring the active photo into view when it changes (keyboard, click, command) or the grid
     // comes back on screen; otherwise the scroll position is the user's
-    // a new search by contents starts at its best match (the top), wherever the grid was scrolled
-    let ask = app.session.content_ask().map(|a| format!("{a:?}"));
-    let new_ask = ui.ctx().data_mut(|d| {
-        let key = egui::Id::unique("grid-content-ask");
-        let was: Option<Option<String>> = d.get_temp(key);
-        d.insert_temp(key, ask.clone());
-        ask.is_some() && was.is_some_and(|w| w != ask)
-    });
     let follow = follow_active(ui.ctx(), egui::Id::unique("grid-follow-active"), active, app.session.source);
     let scroll_to: Option<Rect> = if new_ask {
         lay.cells.first().copied()

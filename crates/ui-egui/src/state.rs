@@ -944,8 +944,9 @@ pub struct UiState {
     #[serde(skip)]
     pub dragging_control: Option<String>,
     pub search: String,
-    /// Text or Contents (the search field's magnifier menu). Not kept between runs: a search by contents is not either.
-    #[serde(skip)]
+    /// Text or Contents (the search field's magnifier menu). Saved only so that [`Self::sanitized`] knows what
+    /// `search` holds: a search by contents is not kept between runs, so its text isn't either.
+    #[serde(default, deserialize_with = "lenient")]
     pub search_mode: SearchMode,
     /// When the Contents text typed last is searched for (egui time): typing waits for a pause.
     #[serde(skip)]
@@ -1727,6 +1728,11 @@ impl UiState {
         self.sidebar.adopt_collapsed(&std::mem::take(&mut self.collapsed_sidebar));
         self.dialog = None;
         self.fullscreen = false;
+        // a search by contents ends with the run: its text must not come back as a search of the photos' text
+        if self.search_mode == SearchMode::Contents {
+            self.search.clear();
+            self.search_mode = SearchMode::Text;
+        }
         if !crate::state::PREVIEW_LIMITS.contains(&self.settings.preview_limit) {
             self.settings.preview_limit = AppSettings::default().preview_limit;
         }
