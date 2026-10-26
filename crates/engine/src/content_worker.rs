@@ -967,6 +967,42 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 3, "the model did not run again");
     }
 
+    /// Two scans at once (two sessions: the tests of a frontend, or a library open in two windows) share the pace's
+    /// pool and the render gate. A render that hands work to another rayon pool (the demo scenes render on a pool of
+    /// their own) keeps its thread busy meanwhile, and a pool thread then takes on other tasks of its own pool: with the
+    /// gate waits on pool threads, one of those was the other scan's photo waiting for the render gate that very thread
+    /// held, and both scans hung.
+    #[test]
+    fn two_scans_sharing_the_pool_and_the_gates_never_deadlock() {
+        let pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap());
+        let other = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
+        let gates = Arc::new(Gates { previews: Gate::new(2), renders: Gate::new(1) });
+        let batch = |n: u64| -> Vec<Item> {
+            (0..n)
+                .map(|i| {
+                    let other = other.clone();
+                    let job: Render = Box::new(move || {
+                        other.install(|| std::thread::sleep(std::time::Duration::from_millis(2)));
+                        Ok(lightcraft_raster::Rgba8::new(64, 48))
+                    });
+                    Item { id: PhotoId(i), hash: [0; 16], preview: None, job: Some(job), path: None }
+                })
+                .collect()
+        };
+        let (tx, rx) = channel();
+        for _ in 0..4 {
+            let (pool, gates, tx, items) = (pool.clone(), gates.clone(), tx.clone(), batch(24));
+            std::thread::spawn(move || {
+                let out = pictures(items, &gates, &AtomicBool::new(false), Some(&pool));
+                let _ = tx.send((out.len(), out.iter().all(|(_, _, r)| r.is_ok())));
+            });
+        }
+        for _ in 0..4 {
+            assert_eq!(rx.recv_timeout(std::time::Duration::from_secs(30)), Ok((24, true)), "the scans deadlocked");
+        }
+        assert_eq!(gates.renders.peak(), 1);
+    }
+
     #[test]
     fn the_pace_sets_threads_and_batches() {
         use Pace::*;
