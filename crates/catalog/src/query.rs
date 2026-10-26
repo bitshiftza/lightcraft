@@ -29,6 +29,10 @@ pub struct Filter {
     /// Only these photos (Find Similar results…); empty = no constraint.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub only: Vec<PhotoId>,
+    /// Show nothing: an explicit empty result (Find Similar with no matches), since an empty
+    /// `only` means "no constraint".
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub only_none: bool,
     /// Any of these labels (the filter bar's multi-select); empty = no constraint.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub labels: Vec<ColorLabel>,
@@ -186,31 +190,6 @@ fn shuffle_rank(seed: u64, id: PhotoId) -> u64 {
     mix64(mix64(seed) ^ id.0)
 }
 
-/// The words of a search text: split at spaces, except inside a quoted value (`contents:"red car"`, also
-/// `camera:"x100 v"`), whose quotes are dropped. An unclosed quote runs to the end.
-pub fn search_tokens(text: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut cur = String::new();
-    let mut quoted = false;
-    for c in text.chars() {
-        if c == '"' && (quoted || cur.ends_with(':') || cur.is_empty()) {
-            quoted = !quoted;
-            continue;
-        }
-        if c.is_whitespace() && !quoted {
-            if !cur.is_empty() {
-                out.push(std::mem::take(&mut cur));
-            }
-            continue;
-        }
-        cur.push(c);
-    }
-    if !cur.trim().is_empty() {
-        out.push(cur);
-    }
-    out
-}
-
 /// The fields of a search text that ask what photos show (`contents:` and its synonym `shows:`), answered outside the
 /// catalog ([`Filter::ranked`]); the catalog lets them through.
 pub const CONTENT_FIELDS: [&str; 2] = ["contents", "shows"];
@@ -220,24 +199,19 @@ pub const CONTENT_FIELDS: [&str; 2] = ["contents", "shows"];
 pub fn split_contents(text: &str) -> (Option<String>, String) {
     let (mut asked, mut rest) = (Vec::new(), Vec::new());
     for tok in search_tokens(text) {
-        match tok.split_once(':') {
+        match tok.split_once(':').filter(|_| !tok.starts_with('"')) {
             Some((field, value)) if CONTENT_FIELDS.iter().any(|f| f.eq_ignore_ascii_case(field)) => {
-                if !value.trim().is_empty() {
-                    asked.push(value.trim().to_string());
+                let value = unquote(value).trim();
+                if !value.is_empty() {
+                    asked.push(value.to_string());
                 }
             }
-            _ => rest.push(if tok.chars().any(char::is_whitespace) { quote(&tok) } else { tok }),
+            // (an empty phrase, `""`, asks for nothing)
+            _ if unquote(tok).trim().is_empty() => {}
+            _ => rest.push(tok),
         }
     }
     ((!asked.is_empty()).then(|| asked.join(" ")), rest.join(" "))
-}
-
-/// A word with a space in its value, written back quoted (`camera:"x100 v"`).
-fn quote(tok: &str) -> String {
-    match tok.split_once(':') {
-        Some((field, value)) => format!("{field}:\"{value}\""),
-        None => format!("\"{tok}\""),
-    }
 }
 
 /// What [`Filter::prepare`] works out once for a pass over many photos.
@@ -248,9 +222,40 @@ pub(crate) struct Prepared {
     ranked: Option<std::collections::HashMap<PhotoId, f32>>,
 }
 
+/// The tokens of a search text: split at whitespace, except inside double quotes, so
+/// `person:"Jane Doe"` is one token (issue #1449). An unclosed quote runs to the end of the text; a
+/// backslash is an ordinary character. One pass over the text, nothing allocated.
+pub(crate) fn search_tokens(text: &str) -> impl Iterator<Item = &str> {
+    let mut rest = text;
+    std::iter::from_fn(move || {
+        rest = rest.trim_start();
+        if rest.is_empty() {
+            return None;
+        }
+        let mut quoted = false;
+        let end = rest
+            .char_indices()
+            .find(|&(_, c)| {
+                quoted ^= c == '"';
+                !quoted && c.is_whitespace()
+            })
+            .map_or(rest.len(), |(i, _)| i);
+        let (tok, tail) = rest.split_at(end);
+        rest = tail;
+        Some(tok)
+    })
+}
+
+/// `s` without the double quotes around it (a missing closing quote is allowed).
+fn unquote(s: &str) -> &str {
+    s.strip_prefix('"').map_or(s, |inner| inner.strip_suffix('"').unwrap_or(inner))
+}
+
 fn token_matches(p: &Photo, tok: &str) -> bool {
     let t = tok.to_lowercase();
-    if let Some((field, val)) = t.split_once(':') {
+    // a token that starts with a quote is a phrase, even with a colon in it
+    if let Some((field, quoted)) = t.split_once(':').filter(|_| !t.starts_with('"')) {
+        let val = unquote(quoted);
         // `>3`, `>=3`, `<3`, `<=3`, `=3` or `3`
         let num = |s: &str| -> Option<(&str, f64)> {
             let op = ["<=", ">=", "<", ">", "="].into_iter().find(|op| s.starts_with(op)).unwrap_or("");
@@ -291,18 +296,22 @@ fn token_matches(p: &Photo, tok: &str) -> bool {
             "name" | "file" => p.file_name.to_lowercase().contains(val),
             // answered outside the catalog, by `Filter::ranked`
             f if CONTENT_FIELDS.contains(&f) => true,
-            // Not a known field: the colon is part of a plain word ("10:30", "Re:").
+            // Not a known field: the colon is part of a plain word ("10:30", "Re:"), its value unquoted
+            // (`re:"a b"` is the text `re:a b`).
+            _ if val.len() != quoted.len() => text_matches(p, &format!("{field}:{val}")),
             _ => text_matches(p, &t),
         };
     }
-    text_matches(p, &t)
+    text_matches(p, unquote(&t))
 }
 
 /// Whether the lower-cased word `t` is in the file name, title, caption, camera, lens, location,
-/// format or a keyword of `p`.
+/// format, a keyword or the name of a person (a named face) of `p`.
 fn text_matches(p: &Photo, t: &str) -> bool {
     let hay = [&p.file_name, &p.meta.title, &p.meta.caption, &p.meta.camera, &p.meta.lens, &p.meta.location, &p.format];
-    hay.iter().any(|h| h.to_lowercase().contains(t)) || p.meta.keywords.iter().any(|k| k.to_lowercase().contains(t))
+    hay.iter().any(|h| h.to_lowercase().contains(t))
+        || p.meta.keywords.iter().any(|k| k.to_lowercase().contains(t))
+        || p.people().iter().any(|n| n.to_lowercase().contains(t))
 }
 
 /// Whether `p` has a named face region called `name` (case-insensitive).
@@ -312,6 +321,17 @@ fn has_person(p: &Photo, name: &str) -> bool {
 }
 
 impl Filter {
+    /// The labels that `label` and `labels` let through together (they AND), in `labels`' order;
+    /// `None` when neither is set, empty when they exclude each other. The chip and the filter
+    /// bar's buttons show this, so they match what is filtered.
+    pub fn labels_shown(&self) -> Option<Vec<ColorLabel>> {
+        match (self.label, self.labels.is_empty()) {
+            (None, true) => None,
+            (Some(l), true) => Some(vec![l]),
+            (l, false) => Some(self.labels.iter().copied().filter(|x| l.is_none_or(|l| l == *x)).collect()),
+        }
+    }
+
     /// Human-readable summary of the active rules (smart album tooltips, `album.list`).
     pub fn describe(&self) -> String {
         self.describe_in(None)
@@ -462,6 +482,9 @@ impl Filter {
         if !self.labels.is_empty() && !p.label.is_some_and(|l| self.labels.contains(&l)) {
             return false;
         }
+        if self.only_none {
+            return false;
+        }
         if !self.only.is_empty() && !prepared.only.as_ref().map_or_else(|| self.only.contains(&p.id), |only| only.contains(&p.id)) {
             return false;
         }
@@ -540,7 +563,7 @@ impl Filter {
         {
             return false;
         }
-        search_tokens(&self.text).iter().all(|tok| token_matches(p, tok))
+        search_tokens(&self.text).all(|tok| token_matches(p, tok))
     }
 }
 

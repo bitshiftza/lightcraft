@@ -42,10 +42,16 @@ pub(crate) fn display_label(chip: &FilterChip, filter: &lightcraft_catalog::Filt
         return format!("{}: {}", tr("Rules"), rules_label(rules, catalog));
     }
     if chip.clear.get("label").is_some() {
-        let mut labels = filter.labels.clone();
-        labels.extend(filter.label.filter(|label| !labels.contains(label)));
-        let names = labels.iter().map(|label| crate::i18n::color_label(catalog, *label)).collect::<Vec<_>>();
-        return format!("{}: {}", tr("Label"), names.join(&format!(" {} ", tr("or"))));
+        let shown = filter.labels_shown().unwrap_or_default();
+        let name = |label: &lightcraft_catalog::ColorLabel| crate::i18n::color_label(catalog, *label);
+        let or = |labels: &[lightcraft_catalog::ColorLabel]| labels.iter().map(name).collect::<Vec<_>>().join(&format!(" {} ", tr("or")));
+        let names = if shown.is_empty() {
+            let plural = if filter.labels.len() > 1 { format!("({})", or(&filter.labels)) } else { or(&filter.labels) };
+            format!("{} {} {plural}", filter.label.as_ref().map(name).unwrap_or_default(), tr("and"))
+        } else {
+            or(&shown)
+        };
+        return format!("{}: {names}", tr("Label"));
     }
     if chip.clear.get("dateFrom").is_some() || chip.clear.get("dateTo").is_some() {
         return match (&filter.date_from, &filter.date_to) {
@@ -56,7 +62,7 @@ pub(crate) fn display_label(chip: &FilterChip, filter: &lightcraft_catalog::Filt
         };
     }
     if chip.clear.get("only").is_some() {
-        return format!("{} {}", tr("Only"), crate::i18n::tr_format!("{n} photos", n = filter.only.len()));
+        return format!("{} {}", tr("Only"), crate::i18n::tr_format!("{n} photos", n = if filter.only_none { 0 } else { filter.only.len() }));
     }
     if let Some((prefix, value)) = chip.label.split_once(": ") {
         let value = if matches!(prefix, "Flag" | "Type") {
@@ -95,7 +101,7 @@ pub fn content_strip(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     let (bar, _) = ui.allocate_exact_size(vec2(ui.available_width(), HEIGHT), Sense::hover());
     ui.painter().rect_filled(bar, 0.0, t.canvas);
-    register(ui.ctx(), "contentchips", bar);
+    register(ui, "contentchips", bar);
     let mut child = ui.new_child(
         egui::UiBuilder::new()
             .max_rect(Rect::from_min_max(pos2(bar.left() + 20.0, bar.top() + 4.0), pos2(bar.right() - 16.0, bar.bottom() - 4.0)))
@@ -117,10 +123,11 @@ pub fn content_strip(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         child.painter().rect(r, 11.0, t.field, Stroke::new(1.0, t.accent), StrokeKind::Inside);
         let text_r = Rect::from_min_max(r.min, pos2(r.right() - 22.0, r.max.y));
         child.painter().with_clip_rect(text_r).text(pos2(r.left() + 10.0, r.center().y), egui::Align2::LEFT_CENTER, &label, font.clone(), t.text);
-        register(child.ctx(), "chip:contents", r);
+        register(&child, "chip:contents", r);
         let xr = Rect::from_center_size(pos2(r.right() - 12.0, r.center().y), vec2(18.0, 18.0));
-        let resp = child.interact(xr, egui::Id::new("content-chip-x"), Sense::click()).on_hover_text(crate::i18n::tr("End the search by contents"));
-        register(child.ctx(), "chip:contents:x", xr);
+        let resp =
+            child.interact(xr, egui::Id::unique("content-chip-x"), Sense::click()).on_hover_text(crate::i18n::tr("End the search by contents"));
+        register(&child, "chip:contents:x", xr);
         let col = if resp.hovered() { t.text } else { t.text_dim };
         let m = 3.5;
         let (a, b) = (xr.center() - vec2(m, m), xr.center() + vec2(m, m));
@@ -128,6 +135,8 @@ pub fn content_strip(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         child.painter().line_segment([pos2(a.x, b.y), pos2(b.x, a.y)], Stroke::new(1.3, col));
         if resp.clicked() {
             let _ = app.run("content.clearQuery", json!({}));
+            // (a search still waiting for a pause in the typing would bring it back)
+            app.ui.search_due = None;
             if app.ui.search_mode == crate::state::SearchMode::Contents || matches!(v.ask, ContentAsk::Text(_)) {
                 // (the words typed were the question)
                 let (asked, rest) = lightcraft_catalog::query::split_contents(&app.ui.search);
@@ -160,19 +169,19 @@ pub fn content_strip(app: &mut LightcraftApp, ui: &mut egui::Ui) {
             hint == Some(ContentHint::TurnOnIndexing) && matches!(&v.state, ContentState::Problem(p) if p.starts_with("No content model"));
         if !said_below {
             let l = child.label(egui::RichText::new(status).font(font.clone()).color(colour));
-            register(child.ctx(), "label:contentsStatus", l.rect);
+            register(&child, "label:contentsStatus", l.rect);
         }
     }
     match hint {
         Some(ContentHint::Partial { percent }) => {
             let l = child
                 .label(egui::RichText::new(crate::i18n::tr_format!("Indexed {percent} % of photos", percent = percent)).font(font).color(t.text_dim));
-            register(child.ctx(), "label:contentsHint", l.rect);
+            register(&child, "label:contentsHint", l.rect);
         }
         Some(ContentHint::TurnOnIndexing) => {
             let l =
                 child.label(egui::RichText::new(crate::i18n::tr("Turn on Index photo contents in Settings → Search")).font(font).color(t.caution));
-            register(child.ctx(), "label:contentsHint", l.rect);
+            register(&child, "label:contentsHint", l.rect);
             if crate::widgets::text_button(&mut child, "contentsSettings", "Open Settings…", false).clicked() {
                 let _ = app.run("app.settings", json!({"tab": "search"}));
             }
@@ -189,7 +198,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, chips: &[FilterChip]) {
     let t = Tokens::get(ui.ctx());
     let (bar, _) = ui.allocate_exact_size(vec2(ui.available_width(), HEIGHT), Sense::hover());
     ui.painter().rect_filled(bar, 0.0, t.canvas);
-    register(ui.ctx(), "filterchips", bar);
+    register(ui, "filterchips", bar);
     let font = t.font(12.0);
     let right = bar.right() - 16.0;
     let mut x = bar.left() + 20.0;
@@ -207,9 +216,9 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, chips: &[FilterChip]) {
         let text_r = Rect::from_min_max(r.min, pos2(r.right() - 22.0, r.max.y));
         ui.painter().with_clip_rect(text_r).text(pos2(r.left() + 10.0, r.center().y), egui::Align2::LEFT_CENTER, &label, font.clone(), t.text);
         let xr = Rect::from_center_size(pos2(r.right() - 12.0, r.center().y), vec2(18.0, 18.0));
-        let resp = ui.interact(xr, egui::Id::new(("filter-chip-x", i)), Sense::click()).on_hover_text(crate::i18n::tr("Remove this filter"));
+        let resp = ui.interact(xr, egui::Id::unique(("filter-chip-x", i)), Sense::click()).on_hover_text(crate::i18n::tr("Remove this filter"));
         crate::widgets::announce(&resp, format!("{}: {label}", crate::i18n::tr("Remove this filter")));
-        register(ui.ctx(), format!("chip:{i}"), xr);
+        register(ui, format!("chip:{i}"), xr);
         let col = if resp.hovered() { t.text } else { t.text_dim };
         let m = 3.5;
         let (a, b) = (xr.center() - vec2(m, m), xr.center() + vec2(m, m));
