@@ -244,9 +244,11 @@ fn place_files(src: &Path, home: &Path, m: &Manifest, c: &str) -> Result<()> {
     if !in_place {
         std::fs::create_dir_all(home).map_err(|e| fail("could not create the model's folder (is the disk full or read-only?)", e))?;
     }
-    let mut placed: Vec<PathBuf> = Vec::new();
-    let undo = |placed: &[PathBuf]| {
-        for p in placed {
+    // every file is copied to `<name>.part` and checked before any is renamed into place: a damaged
+    // file in a second folder of an installed model leaves the installed files as they were
+    let mut parts: Vec<PathBuf> = Vec::new();
+    let undo = |paths: &[PathBuf]| {
+        for p in paths {
             let _ = std::fs::remove_file(p);
         }
         if made_home {
@@ -261,7 +263,7 @@ fn place_files(src: &Path, home: &Path, m: &Manifest, c: &str) -> Result<()> {
             let part = home.join(format!("{}.part", f.name));
             if let Err(e) = std::fs::copy(&from, &part) {
                 let _ = std::fs::remove_file(&part);
-                undo(&placed);
+                undo(&parts);
                 return Err(fail(&format!("could not copy {} (is the disk full?)", f.name), e));
             }
             part
@@ -272,18 +274,22 @@ fn place_files(src: &Path, home: &Path, m: &Manifest, c: &str) -> Result<()> {
             if !in_place {
                 let _ = std::fs::remove_file(&checked);
             }
-            undo(&placed);
+            undo(&parts);
             return Err(bad(c, format!("{} is damaged or not the model's file (its size or SHA-256 does not match)", f.name)));
         }
         if !in_place {
-            let target = home.join(&f.name);
-            if let Err(e) = std::fs::rename(&checked, &target) {
-                let _ = std::fs::remove_file(&checked);
-                undo(&placed);
-                return Err(fail("could not finish the copy", e));
-            }
-            placed.push(target);
+            parts.push(checked);
         }
+    }
+    let mut placed: Vec<PathBuf> = Vec::new();
+    for (i, (part, f)) in parts.iter().zip(&m.files).enumerate() {
+        let target = home.join(&f.name);
+        if let Err(e) = std::fs::rename(part, &target) {
+            undo(parts.get(i..).unwrap_or_default());
+            undo(&placed);
+            return Err(fail("could not finish the copy", e));
+        }
+        placed.push(target);
     }
     Ok(())
 }
@@ -391,7 +397,7 @@ fn test(s: &mut Session, p: &Value) -> Result<Value> {
         if s.content_jobs.running().is_some() {
             return Err(bad(C, "another model job is running: wait for it"));
         }
-        let _row = s.activity.start("content", "Testing search model", crate::activity::Cancel::No);
+        let _row = s.activity.start("contentTest", "Testing search model", crate::activity::Cancel::No);
         return Ok(match cm::test_and_record(&home, &m) {
             Ok(r) => json!({"id": id, "ok": true, "result": r}),
             Err(e) => json!({"id": id, "ok": false, "error": e}),

@@ -392,7 +392,7 @@ impl Jobs {
     pub fn start_test(&mut self, home: PathBuf, m: Manifest, activity: &Activity) -> Result<(), String> {
         self.refuse_second()?;
         let mut job = Job::new(JobKind::Test, 0);
-        let task = activity.start("content", "Testing search model", Cancel::No);
+        let task = activity.start("contentTest", "Testing search model", Cancel::No);
         task.detail(&m.name);
         job.task = Some(task.handle());
         let job = Arc::new(job);

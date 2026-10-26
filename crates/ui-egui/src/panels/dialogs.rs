@@ -1564,6 +1564,7 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context, blocked: bool) {
                         | Dialog::SynchronizeFolder { .. }
                         | Dialog::SaveEffect { .. }
                         | Dialog::CaptureTime { .. }
+                        | Dialog::ContentModel { .. }
                 ) =>
             {
                 app.toast(ctx, e)

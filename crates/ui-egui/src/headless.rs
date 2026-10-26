@@ -1431,6 +1431,13 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         assert!(!content.join("tiny").exists(), "a cancelled download leaves nothing");
+        // a download that can't start keeps the terms open (the error is a toast)
+        h.app.ui.dialog = Some(Dialog::ContentModel { info: json!({"id": "nosuch", "name": "No such model"}), accepted: true });
+        h.step();
+        let r = h.request("ui.clickWidget", json!({"id": "button:dialogOk"}), t);
+        assert_eq!(r["ok"], true, "{r}");
+        h.step();
+        assert!(matches!(&h.app.ui.dialog, Some(Dialog::ContentModel { accepted: true, .. })), "{:?}", h.app.ui.dialog);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

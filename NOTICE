@@ -48,7 +48,8 @@ HuggingFace Team and Google, licensed under the Apache License 2.0. The port was
 LightCraft contributors (2026): translated from Python/PyTorch to Rust on candle and restructured;
 each ported file says so. Because of this, crates/vision is licensed under the Apache License 2.0
 only (LICENSE-APACHE), not under the MIT option. The SigLIP 2 weights
-(google/siglip2-base-patch16-256, Apache-2.0, Google) are not part of LightCraft and are never
+(google/siglip2-base-patch16-256, google/siglip2-base-patch16-384 and
+google/siglip2-so400m-patch16-384; Apache-2.0, Google) are not part of LightCraft and are never
 distributed with it; a user downloads them only when they choose to.
 
 AI denoise weights are not part of LightCraft and are never distributed with it.
