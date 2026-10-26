@@ -245,6 +245,61 @@ fn cached_tiles_need_no_request_and_stale_ones_are_revalidated() {
 }
 
 #[test]
+fn a_stale_tile_whose_refresh_was_dropped_is_refreshed_when_back_in_view() {
+    let root = tmp("revalidate-dropped");
+    let stale_key = TileKey::new(6, 11, 20).unwrap();
+    let busy = [TileKey::new(6, 1, 1).unwrap(), TileKey::new(6, 2, 2).unwrap()];
+    let now = crate::now_secs();
+    let old = TileMeta { fetched: now - 900_000, expires: now - 10, etag: Some("\"v1\"".into()), last_modified: None };
+    TileCache::new(&root, "test", 100 << 20).unwrap().write(stale_key, &old, &png(256, 256)).unwrap();
+    let gate = Arc::new((Mutex::new(false), std::sync::Condvar::new()));
+    let g = gate.clone();
+    let fake = Fake::new(move |_, _| {
+        let (open, cv) = &*g;
+        let mut o = open.lock().unwrap();
+        while !*o {
+            o = cv.wait(o).unwrap();
+        }
+        Ok(ok_png("max-age=60"))
+    });
+    let svc = TileService::with_transport(source(), Some(TileCache::new(&root, "test", 100 << 20).unwrap()), Some(fake.clone()));
+    // both request slots held, so the stale tile's refresh can only wait in the queue
+    svc.want(&busy);
+    wait_until("two requests on the wire", 10, || fake.active.load(Ordering::SeqCst) == 2);
+    svc.want(&[busy[0], busy[1], stale_key]);
+    wait_until("the stale tile from disk", 10, || svc.stats().in_memory >= 1);
+    // it leaves the view before its refresh starts, then comes back
+    svc.want(&busy);
+    svc.want(&[busy[0], busy[1], stale_key]);
+    {
+        let (open, cv) = &*gate;
+        *open.lock().unwrap() = true;
+        cv.notify_all();
+    }
+    wait_until("the refresh", 10, || svc.is_idle() && fake.keys().contains(&stale_key));
+    drop(svc);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn tiles_that_arrive_already_stale_are_not_refetched_every_frame() {
+    for cache_control in ["no-cache", "max-age=0"] {
+        let fake = Fake::new(move |_, _| Ok(ok_png(cache_control)));
+        let svc = TileService::with_transport(source(), None, Some(fake.clone()));
+        let keys = [TileKey::new(5, 1, 1).unwrap(), TileKey::new(5, 2, 1).unwrap()];
+        svc.want(&keys);
+        wait_until("both tiles", 10, || svc.is_idle() && svc.stats().in_memory == 2);
+        // the UI shows the same view every frame
+        for _ in 0..20 {
+            svc.want(&keys);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        wait_until("idle", 10, || svc.is_idle());
+        assert_eq!(fake.urls().len(), 2, "{cache_control}: one request per tile, not one per frame");
+    }
+}
+
+#[test]
 fn fetched_tiles_are_cached_and_damaged_entries_refetched() {
     let root = tmp("store");
     let fake = Fake::new(|_, _| Ok(ok_png("max-age=600")));

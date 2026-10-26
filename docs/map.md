@@ -51,8 +51,8 @@ As in Lightroom Classic's Map module:
 - **Remove GPS Coordinates**: Photo ▸ Remove GPS Coordinates clears the position of the selected photos; a right-click
   on a pin offers the same for that pin's photos. One undo step.
 - The map can't show the poles (Web Mercator stops at ±85.05° latitude), so a drop reaches 85.05° north or south at
-  most; drop above the top edge and you get the edge. Longitudes wrap around the world. Type a position closer to a pole
-  in the Info panel's GPS field.
+  most; drop just inside the top edge to get the edge's latitude. Longitudes wrap around the world. Type a position
+  closer to a pole in the Info panel's GPS field.
 - Where positions are saved: in the library, and in XMP sidecars (EXIF GPS: `exif:GPSLatitude` /
   `exif:GPSLongitude`) when they are written (Photo ▸ Save Metadata to File, or at once with File ▸ Automatically
   Write Changes into XMP on). A position you set or clear in LightCraft replaces the sidecar's, so a cleared one (or an undone geotag) is
