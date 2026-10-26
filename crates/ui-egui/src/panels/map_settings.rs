@@ -143,7 +143,7 @@ pub fn tab(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens) {
         "Showing a map asks the tile server for the tiles of the area on screen, so the server sees which places you look at, with your IP address and LightCraft's name and version. Nothing is sent while no map is on screen, or when tiles are off.",
     );
     let r = ui.link(crate::i18n::tr("About the map and its tiles (docs/map.md)"));
-    register(ui.ctx(), "link:settingsMapDocs", r.rect);
+    register(ui, "link:settingsMapDocs", r.rect);
     if r.clicked()
         && let Err(e) = crate::links::open(app, DOCS)
     {
@@ -170,7 +170,7 @@ fn custom_fields(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens) {
     let mut apply = false;
     row(ui, t, "", |ui| {
         let r = ui.button(crate::i18n::tr("Apply"));
-        register(ui.ctx(), "button:settingsMapApply", r.rect);
+        register(ui, "button:settingsMapApply", r.rect);
         apply = r.clicked();
     });
     if (apply || confirmed)
@@ -192,7 +192,7 @@ fn custom_fields(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens) {
 /// The cache's size (refreshed every 2 s: counting a large folder each frame would be slow) and
 /// Clear Cache.
 fn cache_rows(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens) {
-    let key = egui::Id::new("settings-map-cache");
+    let key = egui::Id::unique("settings-map-cache");
     let now = ui.input(|i| i.time);
     let info: Value = match ui.data(|d| d.get_temp::<(f64, Value)>(key)) {
         Some((at, v)) if now - at < 2.0 => v,
@@ -217,7 +217,7 @@ fn cache_rows(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens) {
     row(ui, t, "In use", |ui| {
         ui.label(RichText::new(text).color(t.text));
         let r = ui.button(crate::i18n::tr("Clear Cache"));
-        register(ui.ctx(), "button:settingsMapClearCache", r.rect);
+        register(ui, "button:settingsMapClearCache", r.rect);
         clear = r.clicked();
     });
     if clear {

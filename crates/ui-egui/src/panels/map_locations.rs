@@ -134,7 +134,7 @@ fn meters_per_point(vp: &Viewport, lat: f64) -> f64 {
 }
 
 /// Draw every saved location on the map (before the pins, which stay on top).
-pub fn draw(app: &mut LightcraftApp, painter: &egui::Painter, t: &Tokens, canvas: Rect, vp: &Viewport) {
+pub fn draw(app: &mut LightcraftApp, ui: &egui::Ui, painter: &egui::Painter, t: &Tokens, canvas: Rect, vp: &Viewport) {
     // a location deleted mid-drag (a command, another window): the drag ends with it
     if app.map.loc.drag.is_some_and(|d| app.session.map.locations.get(d.id).is_none()) {
         app.map.loc.drag = None;
@@ -215,10 +215,10 @@ pub fn draw(app: &mut LightcraftApp, painter: &egui::Painter, t: &Tokens, canvas
     }
     for s in &shown {
         if shown.len() <= MAX_LISTED {
-            register(painter.ctx(), format!("map:location:{}:centre", s.id), Rect::from_center_size(s.center, vec2(12.0, 12.0)));
+            register(ui, format!("map:location:{}:centre", s.id), Rect::from_center_size(s.center, vec2(12.0, 12.0)));
         }
         if app.map.loc.selected == Some(s.id) {
-            register(painter.ctx(), format!("map:location:{}:radius", s.id), Rect::from_center_size(s.handle, vec2(12.0, 12.0)));
+            register(ui, format!("map:location:{}:radius", s.id), Rect::from_center_size(s.handle, vec2(12.0, 12.0)));
         }
     }
     app.map.loc.shown = shown;
@@ -526,15 +526,15 @@ pub fn overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, canvas: Rect) {
     };
     let frame = Rect::from_min_size(canvas.min + vec2(12.0, 12.0), vec2(LIST_W, HEADER_H + rows_h));
     app.map.loc.overlay = Some(frame);
-    register(ui.ctx(), "map:locations", frame);
+    register(ui, "map:locations", frame);
     // the list's own room: clicks, drags and scrolls on it never reach the map below
-    let _ = ui.interact(frame, egui::Id::new("map-locations-bg"), Sense::click_and_drag());
+    let _ = ui.interact(frame, egui::Id::unique("map-locations-bg"), Sense::click_and_drag());
     ui.painter().rect_filled(frame.expand(1.0), 6.0, Color32::from_black_alpha(90));
     ui.painter().rect_filled(frame, 6.0, t.chrome.gamma_multiply(0.96));
     // the header: a click folds or unfolds the list
     let header = Rect::from_min_size(frame.min, vec2(LIST_W, HEADER_H));
-    let hresp = ui.interact(header.with_max_x(header.right() - 34.0), egui::Id::new("map-locations-header"), Sense::click());
-    register(ui.ctx(), "map:locationsHeader", header);
+    let hresp = ui.interact(header.with_max_x(header.right() - 34.0), egui::Id::unique("map-locations-header"), Sense::click());
+    register(ui, "map:locationsHeader", header);
     let title = format!("{} ({})", crate::i18n::tr("Saved Locations"), list.len());
     let g = ui.painter().text(pos2(header.left() + 12.0, header.center().y), Align2::LEFT_CENTER, title, t.semibold(12.5), t.text);
     let c = pos2(g.right() + 10.0, header.center().y);
@@ -556,14 +556,14 @@ pub fn overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, canvas: Rect) {
     let plus = crate::widgets::icon_button(&mut hdr, "locationNew", crate::icons::Icon::Plus, vec2(26.0, 26.0), false, true, "New Location");
     egui::Popup::menu(&plus).show(|ui| {
         let b = ui.button(crate::i18n::tr("New Location at Map Centre…"));
-        register(ui.ctx(), "map:locationNew:centre", b.rect);
+        register(ui, "map:locationNew:centre", b.rect);
         if b.clicked() {
             new_location(app, false);
         }
         let any =
             app.session.targets(&json!({})).unwrap_or_default().iter().any(|id| app.session.catalog.photo(*id).is_some_and(|p| p.meta.gps.is_some()));
         let b = ui.add_enabled(any, egui::Button::new(crate::i18n::tr("New Location from Selection…")));
-        register(ui.ctx(), "map:locationNew:selection", b.rect);
+        register(ui, "map:locationNew:selection", b.rect);
         if b.clicked() {
             new_location(app, true);
         }
@@ -605,7 +605,7 @@ fn location_row(
     selected_photos: &std::collections::HashSet<u64>,
 ) {
     let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click());
-    register(ui.ctx(), format!("map:location:{}", l.id), r);
+    register(ui, format!("map:location:{}", l.id), r);
     let shown = app.map.loc.selected == Some(l.id);
     let edge = r.right();
     let inner = Rect::from_min_max(r.min + vec2(4.0, 0.0), pos2((edge - 4.0).max(r.left() + 4.0), r.bottom()));
@@ -614,10 +614,10 @@ fn location_row(
     } else if resp.hovered() {
         ui.painter().rect_filled(inner, 4.0, t.hover.gamma_multiply(0.6));
     }
-    resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, shown, &l.name));
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, shown, &l.name));
     // the checkbox: are this location's photos (in view) the ones selected?
     let check = Rect::from_center_size(pos2(r.left() + 18.0, r.center().y), vec2(13.0, 13.0));
-    register(ui.ctx(), format!("map:location:{}:check", l.id), check);
+    register(ui, format!("map:location:{}:check", l.id), check);
     let ticked = count > 0 && count <= selected_photos.len() && app.map.loc.index.inside(&l.circle()).iter().all(|i| selected_photos.contains(i));
     let p = ui.painter();
     p.rect_stroke(check, 2.0, Stroke::new(1.2, t.text_label), egui::StrokeKind::Inside);
@@ -640,7 +640,7 @@ fn location_row(
     let text = if measure(&label) <= room { label.clone() } else { crate::widgets::elide_head(&label, room, measure) };
     p.text(pos2(name_left, r.center().y), Align2::LEFT_CENTER, &text, t.font(13.0), if shown { t.text } else { t.text_label });
     let count_rect = Rect::from_min_size(pos2(count_left, r.center().y - count_g.size().y / 2.0), count_g.size());
-    register(ui.ctx(), format!("map:location:{}:count", l.id), count_rect);
+    register(ui, format!("map:location:{}:count", l.id), count_rect);
     p.galley(count_rect.min, count_g, t.text_dim);
     let resp = if text != label { resp.on_hover_text(&label) } else { resp };
     if resp.clicked() {
@@ -658,27 +658,27 @@ fn location_row(
     let (name, private) = (l.name.clone(), l.private);
     resp.context_menu(|ui| {
         let b = ui.button(crate::i18n::tr("Go to Location"));
-        register(ui.ctx(), "map:locationMenu:show", b.rect);
+        register(ui, "map:locationMenu:show", b.rect);
         if b.clicked() {
             let _ = app.run("map.location.show", json!({"id": id}));
             ui.close();
         }
         let b = ui.button(crate::i18n::tr("Select Photos in Location"));
-        register(ui.ctx(), "map:locationMenu:selectPhotos", b.rect);
+        register(ui, "map:locationMenu:selectPhotos", b.rect);
         if b.clicked() {
             let _ = app.run("map.location.selectPhotos", json!({"id": id}));
             ui.close();
         }
         ui.separator();
         let b = ui.button(crate::i18n::tr("Rename…"));
-        register(ui.ctx(), "map:locationMenu:rename", b.rect);
+        register(ui, "map:locationMenu:rename", b.rect);
         if b.clicked() {
             super::super::dialogs::prompt(app, "Rename Location", "Location name", &name, "map.location.update", json!({"id": id}), "name");
             ui.close();
         }
         let mut on = private;
         let b = ui.checkbox(&mut on, crate::i18n::tr("Private"));
-        register(ui.ctx(), "map:locationMenu:private", b.rect);
+        register(ui, "map:locationMenu:private", b.rect);
         let b = b.on_hover_text(crate::i18n::tr("Photos inside are exported without their location, and the Info panel hides their map"));
         if b.changed() {
             if let Err(e) = app.run("map.location.update", json!({"id": id, "private": on})) {
@@ -688,7 +688,7 @@ fn location_row(
         }
         ui.separator();
         let b = ui.button(crate::i18n::tr("Delete Location…"));
-        register(ui.ctx(), "map:locationMenu:delete", b.rect);
+        register(ui, "map:locationMenu:delete", b.rect);
         if b.clicked() {
             app.ui.dialog = Some(crate::state::Dialog::DeleteLocation { id, name: name.clone() });
             ui.close();
@@ -699,6 +699,10 @@ fn location_row(
 /// The private location the Info panel's map would show photo `id` in (unless the user asked to
 /// see it), noted for `map.state`.
 pub fn hides_mini_map(app: &mut LightcraftApp, id: PhotoId, gps: Option<(f64, f64)>, pass: u64) -> Option<SavedLocation> {
+    // Show Map holds for one photo while it is shown: another one ends it
+    if app.map.loc.reveal_private.is_some_and(|r| r != id) {
+        app.map.loc.reveal_private = None;
+    }
     if app.map.loc.reveal_private == Some(id) {
         return None;
     }

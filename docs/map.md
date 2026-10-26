@@ -85,7 +85,8 @@ As in Lightroom Classic's Map module:
 - **Remove GPS Coordinates**: Photo ▸ Remove GPS Coordinates clears the position of the selected photos; a right-click
   on a pin offers the same for that pin's photos. One undo step.
 - The map can't show the poles (Web Mercator stops at ±85.05° latitude), so a drop reaches 85.05° north or south at
-  most. Longitudes wrap around the world. Type a position closer to a pole in the Info panel's GPS field.
+  most; drop just inside the top edge to get the edge's latitude. Longitudes wrap around the world. Type a position
+  closer to a pole in the Info panel's GPS field.
 - Where positions are saved: in the library, and in XMP sidecars (EXIF GPS: `exif:GPSLatitude` /
   `exif:GPSLongitude`) when they are written (Photo ▸ Save Metadata to File, or at once with File ▸ Automatically
   Write Changes into XMP on). A position you set or clear in LightCraft replaces the sidecar's, so a cleared one (or an
@@ -208,7 +209,8 @@ takes about 230 ms, a zoom level 1–10 ms, a frame's clipping well under 1 ms.
 ## Keys and menus
 
 The Map view's keys, as in Lightroom Classic's Map module where they exist there. They work in the Map view only: H,
-`\` and O mean something else in the other views (Remove, Show Original, the mask overlay) and keep that meaning there;
+`\`, O and ⌘K mean something else in the other views (Remove, Show Original or the grids' Filter Bar, the mask
+overlay, Add Keywords) and keep that meaning there;
 in the Map view the map's command wins. Every key can be changed in Help ▸ Keyboard Shortcuts.
 
 | Key | Command | Does |

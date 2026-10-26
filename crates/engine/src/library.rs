@@ -85,6 +85,9 @@ pub struct Library {
     /// Why the last append of queued ops failed; `None` once a save succeeds. While set, changes
     /// exist only in memory ([`Session::unsaved`]).
     pub unsaved_error: Option<String>,
+    /// Why the last write of presets.json failed; `None` once it is written. While set, the preset
+    /// changes exist only in memory and count as unsaved ([`Session::unsaved`], issue #2266).
+    presets_error: Option<String>,
     /// When the frame loop may retry a failed append ([`Session::persist_if_dirty`] backs off).
     retry_at: Option<web_time::Instant>,
     /// What forgetting untouched Local records did when the library opened.
@@ -185,6 +188,18 @@ struct ViewFile {
     selection: Selection,
 }
 
+/// `mapSource` as stored, or `None` (OpenStreetMap) when it isn't a tile source, with a log line.
+fn lenient_tile_source<'de, D: serde::Deserializer<'de>>(deserializer: D) -> std::result::Result<Option<lightcraft_map::TileSource>, D::Error> {
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(value.and_then(|value| match serde_json::from_value::<lightcraft_map::TileSource>(value) {
+        Ok(source) => Some(source),
+        Err(e) => {
+            log::warn!("prefs.json mapSource: {e}; using OpenStreetMap");
+            None
+        }
+    }))
+}
+
 impl Library {
     pub fn journal(&self) -> &Journal {
         &self.journal
@@ -241,7 +256,9 @@ struct PrefsFile {
     /// Days after which untouched Local records of unbrowsed folders are forgotten (missing =
     /// the default, 0 = never).
     forget_local_days: Option<u32>,
-    /// The map's tile source (missing = OpenStreetMap; re-checked when read).
+    /// The map's tile source (missing = OpenStreetMap; re-checked when read). A damaged one is
+    /// dropped on its own, never taking the other preferences with it.
+    #[serde(deserialize_with = "lenient_tile_source")]
     map_source: Option<lightcraft_map::TileSource>,
     /// Slideshow playback settings.
     slideshow: crate::slideshow::PlaybackSettings,
@@ -503,6 +520,8 @@ impl Session {
         }
         self.undo.clear();
         self.redo.clear();
+        // photo ids are per library: positions set in the last one say nothing about this one's
+        self.gps_edited.clear();
         self.interaction = None;
         self.pending_log.clear();
         self.selection = Selection::default();
@@ -544,6 +563,12 @@ impl Session {
         let (locations, dropped) = crate::locations::SavedLocations::load(file, self.map.locations.revision());
         if dropped > 0 {
             settings.set_aside(files.as_mut(), crate::locations::FILE, &format!("{dropped} saved location(s) in it aren't valid and were left out"));
+            // the copy is safe: write the good ones back, so the next open doesn't set it aside again
+            if !settings.blocked.contains(&crate::locations::FILE)
+                && let Err(e) = files.write_atomic(crate::locations::FILE, &locations.to_file())
+            {
+                log::error!("library: {}: {e}", crate::locations::FILE);
+            }
         }
         self.map.locations.replace(locations);
         self.hold_view = prefs.hold_view;
@@ -586,7 +611,10 @@ impl Session {
             self.selection.ids.retain(|id| self.catalog.photo(*id).is_some());
             self.selection.active = self.selection.active.filter(|id| self.catalog.photo(*id).is_some());
         }
+        // not on Missing Photos: working that view out checks every original (minutes on a
+        // sleeping NAS), and the app checks them in the background once it runs
         if self.selection.active.is_none()
+            && self.source != LibrarySource::Missing
             && let Some(first) = self.visible_cloned().first()
         {
             self.selection = Selection::single(*first);
@@ -608,6 +636,7 @@ impl Session {
             report,
             last_error: None,
             unsaved_error: None,
+            presets_error: None,
             retry_at: None,
             forgot_local: None,
             presets_saved,
@@ -682,10 +711,17 @@ impl Session {
         let Some(lib) = self.library.as_mut() else { return Ok(()) };
         if state.hash == lib.presets_saved.hash {
             lib.presets_saved = state;
+            lib.presets_error = None;
         } else if let Err(e) = lib.files.write_atomic("presets.json", presets.as_bytes()) {
-            // the state stays stale: the next save tries again
+            // the state stays stale: retried by the next command and the frame loop (backing off);
+            // meanwhile the presets count as unsaved, so the UI warns and a backup refuses
             log::error!("library: presets: {e}");
+            lib.presets_error = Some(format!("presets: {e}"));
+            lib.retry_at = Some(web_time::Instant::now() + RETRY_BACKOFF);
         } else {
+            if lib.presets_error.take().is_some() {
+                log::info!("library: presets written to disk");
+            }
             lib.presets_saved = state;
         }
         Ok(())
@@ -695,7 +731,8 @@ impl Session {
     /// changed outside [`Session::execute`]).
     pub fn persist_if_dirty(&mut self) {
         let backing_off = self.library.as_ref().and_then(|l| l.retry_at).is_some_and(|t| web_time::Instant::now() < t);
-        if self.library.is_some() && !self.pending_log.is_empty() && !backing_off {
+        let presets_unsaved = self.library.as_ref().is_some_and(|l| l.presets_error.is_some());
+        if self.library.is_some() && (!self.pending_log.is_empty() || presets_unsaved) && !backing_off {
             let _ = self.persist();
         } else if let Some(lib) = self.library.as_mut() {
             poll_compaction(lib);
@@ -703,11 +740,14 @@ impl Session {
     }
 
     /// Changes applied in memory but not yet written to disk because saving failed: the number of
-    /// queued ops and why (`None` when everything is saved, or no library is open). Retried by
-    /// every command and by [`Session::persist_if_dirty`].
+    /// queued ops (plus one for presets.json) and why (`None` when everything is saved, or no library
+    /// is open). Retried by every command and by [`Session::persist_if_dirty`].
     pub fn unsaved(&self) -> Option<(usize, &str)> {
         let lib = self.library.as_ref()?;
-        lib.unsaved_error.as_deref().filter(|_| !self.pending_log.is_empty()).map(|e| (self.pending_log.len(), e))
+        let ops = lib.unsaved_error.as_deref().filter(|_| !self.pending_log.is_empty());
+        let presets = lib.presets_error.as_deref();
+        let n = ops.map_or(0, |_| self.pending_log.len()) + usize::from(presets.is_some());
+        ops.or(presets).map(|why| (n, why))
     }
 
     /// Flush everything and write a snapshot (on quit). Ends an open interaction first.
