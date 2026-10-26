@@ -2362,11 +2362,6 @@
   "Clear Preview Cache": "Vaciar caché de vistas previas",
   "Compare Before and After": "Comparar antes y después",
   "Fit to Photos": "Ajustar a las fotos",
-  "Lock Markers": "Bloquear marcadores",
-  "Pins can't be dragged to move photos": "Los marcadores no se pueden arrastrar para mover fotos",
-  "Remove GPS Coordinates": "Quitar coordenadas GPS",
-  "Remove GPS Coordinates of These Photos": "Quitar coordenadas GPS de estas fotos",
-  "Set GPS Coordinates": "Establecer coordenadas GPS",
   "Map": "Mapa",
   "Map tiles are off": "Los mosaicos del mapa están desactivados",
   "Map tiles are off (Settings / map.tileSource)": "Los mosaicos del mapa están desactivados (Ajustes / map.tileSource)",
@@ -2381,5 +2376,10 @@
   "Width × Height": "Ancho × alto",
   "photo without GPS": "foto sin GPS",
   "photos without GPS": "fotos sin GPS",
-  "Show Focus Point": "Mostrar punto de enfoque"
+  "Show Focus Point": "Mostrar punto de enfoque",
+  "Lock Markers": "Bloquear marcadores",
+  "Pins can't be dragged to move photos": "Los marcadores no se pueden arrastrar para mover fotos",
+  "Remove GPS Coordinates": "Quitar coordenadas GPS",
+  "Remove GPS Coordinates of These Photos": "Quitar coordenadas GPS de estas fotos",
+  "Set GPS Coordinates": "Establecer coordenadas GPS"
 }

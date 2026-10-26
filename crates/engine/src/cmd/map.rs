@@ -72,8 +72,13 @@ fn requested(cur: &TileSource, p: &Value) -> Result<Option<TileSource>> {
 
 fn tile_source(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(next) = requested(s.map.source(), p)? {
+        let old = s.map.source().clone();
         s.map.set_source(next);
-        s.save_prefs()?;
+        // a source that can't be saved isn't kept: an error means nothing changed
+        if let Err(e) = s.save_prefs() {
+            s.map.set_source(old);
+            return Err(e);
+        }
     }
     Ok(source_json(s.map.source()))
 }
@@ -388,5 +393,41 @@ mod tests {
         // it is in the Photo menu
         let spec = crate::cmd::find_command("photo.removeGps").unwrap();
         assert_eq!(spec.menu, &["Photo"]);
+    }
+
+    /// A library whose settings can't be written (a full disk, a read-only folder).
+    #[derive(Default)]
+    struct Unwritable(lightcraft_catalog::MemStore);
+
+    impl lightcraft_catalog::Store for Unwritable {
+        fn read(&mut self, name: &str) -> std::io::Result<Option<Vec<u8>>> {
+            self.0.read(name)
+        }
+        fn write_atomic(&mut self, _: &str, _: &[u8]) -> std::io::Result<()> {
+            Err(std::io::Error::other("disk full"))
+        }
+        fn append(&mut self, name: &str, data: &[u8]) -> std::io::Result<()> {
+            self.0.append(name, data)
+        }
+        fn truncate(&mut self, name: &str, len: u64) -> std::io::Result<()> {
+            self.0.truncate(name, len)
+        }
+        fn describe(&self) -> String {
+            "unwritable".into()
+        }
+    }
+
+    #[test]
+    fn a_tile_source_that_cant_be_saved_is_not_kept() {
+        let mut s = Session::new();
+        let stores = crate::library::LibraryStores {
+            dir: "unwritable".into(),
+            catalog: Box::new(lightcraft_catalog::MemStore::new()),
+            files: Box::new(Unwritable::default()),
+            on_disk: false,
+        };
+        s.open_library_in(stores, true).unwrap();
+        assert!(s.execute("map.tileSource", &json!({"offline": true})).is_err());
+        assert_eq!(s.map.source().id, "osm", "an error means nothing changed");
     }
 }

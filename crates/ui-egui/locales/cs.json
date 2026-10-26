@@ -2423,6 +2423,7 @@
   "No photos with a location": "Žádné fotografie s místem",
   "photo without GPS": "fotografie bez GPS",
   "photos without GPS": "fotografií bez GPS",
+  "Show Focus Point": "Zobrazit zaostřovací bod",
   "Map tiles are off": "Dlaždice mapy jsou vypnuté",
   "Open in Browser": "Otevřít v prohlížeči",
   "Show in the Map view": "Zobrazit v zobrazení Mapa",
@@ -2430,6 +2431,5 @@
   "Pins can't be dragged to move photos": "Špendlíky nelze přetáhnout a přesunout tak fotografie",
   "Remove GPS Coordinates": "Odebrat souřadnice GPS",
   "Remove GPS Coordinates of These Photos": "Odebrat souřadnice GPS těchto fotografií",
-  "Set GPS Coordinates": "Nastavit souřadnice GPS",
-  "Show Focus Point": "Zobrazit zaostřovací bod"
+  "Set GPS Coordinates": "Nastavit souřadnice GPS"
 }

@@ -2360,11 +2360,6 @@
   "Clear Preview Cache": "プレビューキャッシュを消去",
   "Compare Before and After": "編集前と編集後を比較",
   "Fit to Photos": "写真に合わせる",
-  "Lock Markers": "マーカーをロック",
-  "Pins can't be dragged to move photos": "ピンをドラッグして写真を移動できなくします",
-  "Remove GPS Coordinates": "GPS 座標を削除",
-  "Remove GPS Coordinates of These Photos": "これらの写真の GPS 座標を削除",
-  "Set GPS Coordinates": "GPS 座標を設定",
   "Map": "マップ",
   "Map tiles are off": "地図タイルはオフです",
   "Map tiles are off (Settings / map.tileSource)": "地図タイルはオフです（設定 / map.tileSource）",
@@ -2379,5 +2374,10 @@
   "Width × Height": "幅 × 高さ",
   "photo without GPS": "GPS のない写真",
   "photos without GPS": "GPS のない写真",
-  "Show Focus Point": "フォーカスポイントを表示"
+  "Show Focus Point": "フォーカスポイントを表示",
+  "Lock Markers": "マーカーをロック",
+  "Pins can't be dragged to move photos": "ピンをドラッグして写真を移動できなくします",
+  "Remove GPS Coordinates": "GPS 座標を削除",
+  "Remove GPS Coordinates of These Photos": "これらの写真の GPS 座標を削除",
+  "Set GPS Coordinates": "GPS 座標を設定"
 }

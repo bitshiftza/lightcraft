@@ -527,3 +527,18 @@ fn hostile_positions_narrow_windows_and_a_changing_photo_never_crash_the_mini_ma
     }
     assert!(widget(&h, "info:miniMap").is_some());
 }
+
+#[test]
+fn the_mini_map_pin_stays_on_a_map_of_any_width() {
+    use crate::panels::map::keep_on_map;
+    use egui::{Rect, pos2};
+    let wide = Rect::from_min_size(pos2(0.0, 0.0), egui::vec2(200.0, 160.0));
+    assert_eq!(keep_on_map(pos2(-50.0, 300.0), wide), pos2(8.0, 152.0));
+    assert_eq!(keep_on_map(pos2(f32::NAN, 10.0), wide), wide.center());
+    // narrower than the 8-point margins on both sides: the centre line, not a panic
+    for w in [1.0, 5.0, 15.9, 16.0] {
+        let narrow = Rect::from_min_size(pos2(10.0, 0.0), egui::vec2(w, 160.0));
+        let p = keep_on_map(pos2(500.0, 80.0), narrow);
+        assert!((narrow.left()..=narrow.right()).contains(&p.x), "{w}: {p:?}");
+    }
+}

@@ -780,15 +780,19 @@ fn info(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
             app.toast(ui.ctx(), e);
         }
         // (one photo's place: not shown while the selected photos' places differ)
-        if let Some((la, lo)) = m.gps.filter(|_| !gps_mixed) {
+        let one_place = m.gps.filter(|_| !gps_mixed);
+        if let Some((la, lo)) = one_place {
             let pretty = format!("{:.5}° {}, {:.5}° {}", la.abs(), if la >= 0.0 { "N" } else { "S" }, lo.abs(), if lo >= 0.0 { "E" } else { "W" });
             ui.add(egui::Label::new(egui::RichText::new(pretty).size(11.0).color(t.text_dim)).truncate());
-            // the map of the active photo's place (the active one only, with several selected); a
-            // click on it opens the Map view there, the button below opens OpenStreetMap's site
-            if let Some(pos) = lightcraft_map::LatLon::from_gps(Some((la, lo))) {
-                ui.add_space(6.0);
-                super::map::mini_map(app, ui, id, pos, width);
-            }
+        }
+        // the map of the shown photo's place (the active one's, also while the selected photos'
+        // places differ); a click on it opens the Map view there, the button below opens
+        // OpenStreetMap's site
+        if let Some(pos) = lightcraft_map::LatLon::from_gps(m.gps) {
+            ui.add_space(6.0);
+            super::map::mini_map(app, ui, id, pos, width);
+        }
+        if let Some((la, lo)) = one_place {
             ui.add_space(6.0);
             if text_button(ui, "showOnMap", crate::i18n::tr("Open in Browser"), false)
                 .on_hover_text(crate::i18n::tr("Open the place in OpenStreetMap"))
