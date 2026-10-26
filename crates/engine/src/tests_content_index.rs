@@ -181,8 +181,11 @@ fn a_scan_fills_the_index_shows_in_the_activity_stack_and_a_reopened_library_doe
     s.close_library().unwrap();
     let file = index_file(&d, "fake");
     let len = std::fs::metadata(&file).unwrap().len() as usize;
-    assert_eq!(len % 40, (len - total * 40) % 40);
     assert!(len >= total * 40 && len < total * 40 + 200, "{len}");
+    // the header ("LCCE", version, tag length, the tag, dimension, element type), then whole 40-byte records
+    let bytes = std::fs::read(&file).unwrap();
+    let header = 4 + 1 + 2 + u16::from_le_bytes([bytes[5], bytes[6]]) as usize + 4 + 1;
+    assert_eq!((len - header) % 40, 0, "whole records after a {header}-byte header: {len}");
     drop(s);
     // a new session: the index is read back, nothing is embedded again
     let mut again = session(&d, &calls, 0, true);

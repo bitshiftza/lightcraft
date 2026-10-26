@@ -338,8 +338,7 @@
   leaves nothing behind. **Test** checks the model on a few generated scenes and shows how long a photo takes.
 - A model whose files are already in its folder shows as found on this computer: **Check and Use** checks them without
   downloading anything.
-- Everything stays on this computer. Indexing and searching photos by content come in the next steps; the Index photo
-  contents switch is remembered until then. Agents use `content.models.*`, `content.enable` and `content.status`
+- Everything stays on this computer. Agents use `content.models.*`, `content.enable` and `content.status`
   (docs/content-search.md).
 
 ### Model downloads time out on a name that doesn't resolve
