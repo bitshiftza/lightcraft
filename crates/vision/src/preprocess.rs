@@ -40,7 +40,9 @@ struct Coeffs {
     weights: Vec<Vec<i64>>,
 }
 
-fn coeffs(in_size: usize, out_size: usize, filter: Filter) -> Coeffs {
+/// The coefficients of the output samples in `range` (of `out_size`): each depends only on its own index, so a range
+/// gives exactly those samples of the whole resampling.
+fn coeffs(in_size: usize, out_size: usize, range: std::ops::Range<usize>, filter: Filter) -> Coeffs {
     let (f, support): (fn(f64) -> f64, f64) = match filter {
         Filter::Bilinear => (bilinear, 1.0),
         Filter::Bicubic => (bicubic, 2.0),
@@ -49,9 +51,9 @@ fn coeffs(in_size: usize, out_size: usize, filter: Filter) -> Coeffs {
     let filterscale = scale.max(1.0);
     let support = support * filterscale;
     let ss = 1.0 / filterscale;
-    let mut first = Vec::with_capacity(out_size);
-    let mut weights = Vec::with_capacity(out_size);
-    for xx in 0..out_size {
+    let mut first = Vec::with_capacity(range.len());
+    let mut weights = Vec::with_capacity(range.len());
+    for xx in range {
         let center = (xx as f64 + 0.5) * scale;
         // C casts truncate toward zero
         let xmin = ((center - support + 0.5) as i64).max(0) as usize;
@@ -75,42 +77,64 @@ fn clip8(v: i64) -> u8 {
 
 /// Resample interleaved RGB `w × h` to `ow × oh` (Pillow's 8-bit convolution resampling).
 fn resample(rgb: &[u8], w: usize, h: usize, ow: usize, oh: usize, filter: Filter) -> Vec<u8> {
+    resample_window(rgb, w, h, (ow, oh), (0..ow, 0..oh), filter)
+}
+
+/// The columns `xs` and rows `ys` of [`resample`] to `ow × oh` (`xs.len() × ys.len()`, interleaved RGB), worked out
+/// for that window only: a center crop of a very long image never makes the whole long resampled image.
+fn resample_window(
+    rgb: &[u8],
+    w: usize,
+    h: usize,
+    (ow, oh): (usize, usize),
+    (xs, ys): (std::ops::Range<usize>, std::ops::Range<usize>),
+    filter: Filter,
+) -> Vec<u8> {
     let half = 1i64 << (PRECISION_BITS - 1);
-    // horizontal pass
-    let (mid, mw) = if ow == w {
-        (rgb.to_vec(), w)
-    } else {
-        let c = coeffs(w, ow, filter);
-        let mut out = vec![0u8; ow * h * 3];
-        for y in 0..h {
-            for (x, (first, k)) in c.first.iter().zip(&c.weights).enumerate() {
-                for ch in 0..3 {
-                    let mut s = half;
-                    for (i, wgt) in k.iter().enumerate() {
-                        s += i64::from(rgb.get(((y * w) + first + i) * 3 + ch).copied().unwrap_or(0)) * wgt;
+    let cw = xs.len();
+    // the vertical pass's coefficients first: they say which input rows the horizontal pass needs
+    let vertical = (oh != h).then(|| coeffs(h, oh, ys.clone(), filter));
+    let (r0, r1) = match &vertical {
+        Some(c) => (c.first.iter().copied().min().unwrap_or(0), c.first.iter().zip(&c.weights).map(|(f, k)| f + k.len()).max().unwrap_or(0).min(h)),
+        None => (ys.start.min(h), ys.end.min(h)),
+    };
+    let rows = r1.saturating_sub(r0);
+    // horizontal pass, over those rows
+    let mut mid = vec![0u8; cw * rows * 3];
+    let horizontal = (ow != w).then(|| coeffs(w, ow, xs.clone(), filter));
+    for y in 0..rows {
+        let row = (r0 + y) * w;
+        for x in 0..cw {
+            for ch in 0..3 {
+                let v = match &horizontal {
+                    Some(c) => {
+                        let (Some(first), Some(k)) = (c.first.get(x), c.weights.get(x)) else { continue };
+                        let mut s = half;
+                        for (i, wgt) in k.iter().enumerate() {
+                            s += i64::from(rgb.get((row + first + i) * 3 + ch).copied().unwrap_or(0)) * wgt;
+                        }
+                        clip8(s)
                     }
-                    if let Some(o) = out.get_mut((y * ow + x) * 3 + ch) {
-                        *o = clip8(s);
-                    }
+                    None => rgb.get((row + xs.start + x) * 3 + ch).copied().unwrap_or(0),
+                };
+                if let Some(o) = mid.get_mut((y * cw + x) * 3 + ch) {
+                    *o = v;
                 }
             }
         }
-        (out, ow)
-    };
-    if oh == h {
-        return mid;
     }
+    let Some(c) = vertical else { return mid };
     // vertical pass
-    let c = coeffs(h, oh, filter);
-    let mut out = vec![0u8; mw * oh * 3];
+    let mut out = vec![0u8; cw * ys.len() * 3];
     for (y, (first, k)) in c.first.iter().zip(&c.weights).enumerate() {
-        for x in 0..mw {
+        for x in 0..cw {
             for ch in 0..3 {
                 let mut s = half;
                 for (i, wgt) in k.iter().enumerate() {
-                    s += i64::from(mid.get(((first + i) * mw + x) * 3 + ch).copied().unwrap_or(0)) * wgt;
+                    let r = (first + i).saturating_sub(r0);
+                    s += i64::from(mid.get((r * cw + x) * 3 + ch).copied().unwrap_or(0)) * wgt;
                 }
-                if let Some(o) = out.get_mut((y * mw + x) * 3 + ch) {
+                if let Some(o) = out.get_mut((y * cw + x) * 3 + ch) {
                     *o = clip8(s);
                 }
             }
@@ -147,14 +171,9 @@ pub fn resize(img: &Rgb8, spec: &ImageSpec) -> Result<Vec<u8>> {
             // short edge to `side`, rounding the long edge like the reference (int(side · long / short))
             let (w, h) = (img.width, img.height);
             let (rw, rh) = if w <= h { (side, (side * h / w).max(side)) } else { ((side * w / h).max(side), side) };
-            let r = resample(&rgb, w, h, rw, rh, spec.resize);
             let (x0, y0) = ((rw - side) / 2, (rh - side) / 2);
-            let mut out = Vec::with_capacity(side * side * 3);
-            for y in 0..side {
-                let start = ((y0 + y) * rw + x0) * 3;
-                out.extend_from_slice(r.get(start..start + side * 3).ok_or_else(|| Error::Input("crop outside the image".into()))?);
-            }
-            Ok(out)
+            // only the crop is resampled (the same pixels as resampling it all and cropping)
+            Ok(resample_window(&rgb, w, h, (rw, rh), (x0..x0 + side, y0..y0 + side), spec.resize))
         }
     }
 }
@@ -230,6 +249,32 @@ mod tests {
         let r = resize(&i, &spec).unwrap();
         assert_eq!(r[0], 57); // (0·3 + 80·3 + 160·1) / 7
         assert_eq!(r[3], 183); // (80·1 + 160·3 + 240·3) / 7
+    }
+
+    #[test]
+    fn a_center_crop_resamples_only_the_crop_and_gives_the_same_pixels() {
+        let f = |x: usize, y: usize| [(x * 7 + y * 3) as u8, (x * x + y) as u8, (x ^ (y * 5)) as u8];
+        for filter in [Filter::Bilinear, Filter::Bicubic] {
+            for (w, h, ow, oh) in [(300, 200, 336, 224), (200, 300, 224, 336), (97, 61, 40, 25), (50, 50, 50, 80), (50, 50, 80, 50)] {
+                let rgb: Vec<u8> = img(w, h, f).data.iter().flatten().copied().collect();
+                let whole = resample(&rgb, w, h, ow, oh, filter);
+                let (xs, ys) = (ow / 4..ow / 4 + ow / 2, oh / 3..oh / 3 + oh / 2);
+                let window = resample_window(&rgb, w, h, (ow, oh), (xs.clone(), ys.clone()), filter);
+                let mut cut = Vec::new();
+                for y in ys.clone() {
+                    cut.extend_from_slice(&whole[(y * ow + xs.start) * 3..(y * ow + xs.end) * 3]);
+                }
+                assert_eq!(window, cut, "{filter:?} {w}×{h} → {ow}×{oh}");
+            }
+        }
+        // a 1 × 65,535 image (valid input) center-cropped for CLIP: the long resampled image is never made
+        let spec = crate::manifest::builtin_clip_vit_b32_openai().image;
+        assert_eq!(spec.fit, Fit::CenterCrop);
+        let tall = img(1, MAX_EDGE, |_, y| [(y % 251) as u8, 9, 200]);
+        let started = std::time::Instant::now();
+        let r = resize(&tall, &spec).unwrap();
+        assert_eq!(r.len(), (spec.size as usize).pow(2) * 3);
+        assert!(started.elapsed().as_secs() < 20, "{:?}", started.elapsed());
     }
 
     #[test]
